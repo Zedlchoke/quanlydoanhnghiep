@@ -1,0 +1,174 @@
+import sqlite3
+from datetime import datetime
+import os
+import getpass
+
+# ===== CẤU HÌNH =====
+DB_NAME = "business_data.db"
+PASSWORD = "0102"  # Mật khẩu xóa doanh nghiệp
+
+# ===== KHỞI TẠO DATABASE =====
+def init_db():
+    """Khởi tạo database với cấu trúc chuẩn"""
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute('''CREATE TABLE IF NOT EXISTS businesses (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                tax_id TEXT UNIQUE NOT NULL,
+                address TEXT,
+                phone TEXT,
+                email TEXT,
+                industry TEXT,
+                contact_person TEXT,
+                notes TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
+    conn.commit()
+    conn.close()
+
+# ===== CÁC HÀM CHỨC NĂNG CHÍNH =====
+def add_business():
+    """Thêm doanh nghiệp mới với kiểm tra dữ liệu"""
+    print("\n➕ THÊM DOANH NGHIỆP MỚI")
+    try:
+        business_data = (
+            input("Tên doanh nghiệp: ").strip(),
+            input("Mã số thuế (bắt buộc): ").strip(),
+            input("Địa chỉ: ").strip(),
+            input("Số điện thoại: ").strip(),
+            input("Email: ").strip(),
+            input("Ngành nghề: ").strip(),
+            input("Người liên hệ: ").strip(),
+            input("Ghi chú: ").strip()
+        )
+
+        if not all([business_data[0], business_data[1]]):
+            print("❌ Tên và MST không được để trống!")
+            return
+
+        conn = sqlite3.connect(DB_NAME)
+        c = conn.cursor()
+        c.execute('''INSERT INTO businesses 
+                    (name, tax_id, address, phone, email, industry, contact_person, notes)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)''', business_data)
+        conn.commit()
+        print("✅ Thêm thành công!")
+    except sqlite3.IntegrityError:
+        print("❌ Lỗi: MST đã tồn tại!")
+    except Exception as e:
+        print(f"❌ Lỗi hệ thống: {type(e).__name__}: {e}")
+    finally:
+        conn.close()
+
+def search_business():
+    """Tìm kiếm theo từng trường cụ thể"""
+    while True:
+        print("\n" + "="*50)
+        print("🔍 TÌM KIẾM DOANH NGHIỆP".center(50))
+        print("="*50)
+        print("1. Tìm theo TÊN doanh nghiệp (chính xác)")
+        print("2. Tìm theo MÃ SỐ THUẾ (chính xác)")
+        print("3. Tìm theo NGÀNH NGHỀ (chính xác)")
+        print("4. Tìm theo NGƯỜI LIÊN HỆ (chính xác)")
+        print("5. Tìm theo SỐ ĐIỆN THOẠI (chính xác)")
+        print("6. Tìm theo EMAIL (chính xác)")
+        print("7. Tìm theo ĐỊA CHỈ (chứa từ khóa)")
+        print("0. Quay lại menu chính")
+        print("="*50)
+
+        choice = input("👉 Chọn loại tìm kiếm (0-7): ").strip()
+
+        if choice == "0":
+            return
+
+        field_map = {
+            "1": ("name", "TÊN DOANH NGHIỆP"),
+            "2": ("tax_id", "MÃ SỐ THUẾ"),
+            "3": ("industry", "NGÀNH NGHỀ"),
+            "4": ("contact_person", "NGƯỜI LIÊN HỆ"),
+            "5": ("phone", "SỐ ĐIỆN THOẠI"),
+            "6": ("email", "EMAIL"),
+            "7": ("address", "ĐỊA CHỈ")
+        }
+
+        if choice not in field_map:
+            print("⚠️ Lựa chọn không hợp lệ! Vui lòng chọn từ 0-7")
+            continue
+
+        field_name, field_label = field_map[choice]
+        search_term = input(f"\nNhập {field_label} cần tìm: ").strip()
+
+        try:
+            conn = sqlite3.connect(DB_NAME)
+            c = conn.cursor()
+            
+            # Riêng địa chỉ dùng LIKE, các trường khác dùng =
+            if field_name == "address":
+                query = f"SELECT * FROM businesses WHERE {field_name} LIKE ?"
+                params = (f"%{search_term}%",)
+            else:
+                query = f"SELECT * FROM businesses WHERE {field_name} = ?"
+                params = (search_term,)
+
+            c.execute(query, params)
+            results = c.fetchall()
+
+            if not results:
+                print(f"\n🔎 Không tìm thấy doanh nghiệp nào có {field_label}: '{search_term}'")
+                continue
+
+            print(f"\n📊 KẾT QUẢ TÌM KIẾM THEO {field_label.upper()}:")
+            for idx, biz in enumerate(results, 1):
+                print(f"\n{'='*50}")
+                print(f"DOANH NGHIỆP #{idx}")
+                print(f"{'='*50}")
+                print(f"🏢 Tên: {biz[1]}")
+                print(f"📌 MST: {biz[2]}")
+                print(f"📍 Địa chỉ: {biz[3]}")
+                print(f"📞 Điện thoại: {biz[4]}")
+                print(f"✉️ Email: {biz[5]}")
+                print(f"🏭 Ngành nghề: {biz[6]}")
+                print(f"👤 Người liên hệ: {biz[7]}")
+                print(f"📝 Ghi chú: {biz[8]}")
+                print(f"⏰ Ngày tạo: {biz[9]}")
+                print(f"{'='*50}")
+
+        except Exception as e:
+            print(f"❌ Lỗi khi tìm kiếm: {e}")
+        finally:
+            conn.close()
+
+        # Hỏi có muốn tiếp tục tìm kiếm không
+        if input("\nBạn có muốn tiếp tục tìm kiếm? (y/n): ").lower() != 'y':
+            break
+
+# ===== MENU CHÍNH =====
+def main_menu():
+    init_db()
+    while True:
+        print("\n" + "="*50)
+        print("PHẦN MỀM QUẢN LÝ DOANH NGHIỆP".center(50))
+        print("="*50)
+        print("1. Thêm doanh nghiệp")
+        print("2. Tìm kiếm doanh nghiệp")  # Sẽ gọi hàm search_business() mới
+        print("3. Xóa doanh nghiệp (yêu cầu mật khẩu)")
+        print("0. Thoát")
+        print("="*50)
+
+        choice = input("👉 Chọn chức năng (0-3): ").strip()
+
+        if choice == "1":
+            add_business()
+        elif choice == "2":
+            search_business()  # Gọi hàm tìm kiếm mới
+        elif choice == "3":
+            delete_business()
+        elif choice == "0":
+            print("\n👋 Đã đóng chương trình. Dữ liệu được lưu tại:")
+            print(f"- {os.path.abspath(DB_NAME)}")
+            break
+        else:
+            print("⚠️ Vui lòng chọn từ 0-3")
+
+if __name__ == "__main__":
+    main_menu()

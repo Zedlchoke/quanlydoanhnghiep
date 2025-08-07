@@ -1,0 +1,86 @@
+{
+  "timestamp": "2025-08-07T14:51:00.000Z",
+  "admin_users": [
+    {
+      "id": 1,
+      "username": "quanadmin",
+      "password": "01020811",
+      "createdAt": "2025-08-07T14:04:41.275888"
+    }
+  ],
+  "businesses": [
+    {
+      "id": 4,
+      "name": "axasdsasd",
+      "taxId": "",
+      "address": "",
+      "phone": "",
+      "email": "",
+      "website": "",
+      "industry": "",
+      "contactPerson": "sadadas",
+      "account": "dadsadas",
+      "password": "",
+      "bankAccount": null,
+      "bankName": null,
+      "customFields": {},
+      "notes": "asadas",
+      "createdAt": "2025-08-07T03:22:55.038544"
+    },
+    {
+      "id": 5,
+      "name": "A",
+      "taxId": "1234",
+      "address": "",
+      "phone": "asdasdasdas",
+      "email": "",
+      "website": "",
+      "industry": "",
+      "contactPerson": "",
+      "account": "",
+      "password": "",
+      "bankAccount": null,
+      "bankName": null,
+      "customFields": {},
+      "notes": "asdasda",
+      "createdAt": "2025-08-07T12:32:19.226565"
+    },
+    {
+      "id": 6,
+      "name": "ádad",
+      "taxId": "123999",
+      "address": "",
+      "phone": "",
+      "email": "",
+      "website": "",
+      "industry": "",
+      "contactPerson": "",
+      "account": "",
+      "password": "",
+      "bankAccount": null,
+      "bankName": null,
+      "customFields": {},
+      "notes": "",
+      "createdAt": "2025-08-07T14:03:34.839067"
+    },
+    {
+      "id": 8,
+      "name": "222",
+      "taxId": "234324",
+      "address": "",
+      "phone": "",
+      "email": "",
+      "website": "",
+      "industry": "",
+      "contactPerson": "",
+      "account": "",
+      "password": "",
+      "bankAccount": "",
+      "bankName": "",
+      "customFields": {},
+      "notes": "",
+      "createdAt": "2025-08-07T14:13:09.548515"
+    }
+  ],
+  "document_transactions": []
+}
