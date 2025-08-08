@@ -35,6 +35,9 @@ export interface IStorage {
   authenticateAdmin(login: LoginRequest): Promise<AdminUser | null>;
   changeAdminPassword(username: string, request: ChangePasswordRequest): Promise<boolean>;
   getAdminByUsername(username: string): Promise<AdminUser | undefined>;
+  
+  // Database initialization
+  initializeDatabase(): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -242,6 +245,22 @@ export class DatabaseStorage implements IStorage {
       .from(adminUsers)
       .where(eq(adminUsers.username, username));
     return user || undefined;
+  }
+
+  async initializeDatabase(): Promise<void> {
+    // Create admin user if not exists
+    try {
+      await this.createAdminUser({
+        username: "quanadmin",
+        password: "01020811"
+      });
+      console.log("Admin user created successfully");
+    } catch (error) {
+      // Admin user might already exist, that's okay
+      console.log("Admin user already exists or creation failed:", error);
+    }
+    
+    console.log("Database initialization completed");
   }
 }
 

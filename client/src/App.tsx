@@ -8,6 +8,7 @@ import { AuthProvider, useAuth } from "@/hooks/use-auth";
 import { LoginForm } from "@/components/login-form";
 import Dashboard from "@/pages/dashboard";
 import NotFound from "@/pages/not-found";
+import InitializeDatabasePage from "@/pages/init-db";
 
 function AuthenticatedApp() {
   const { user, isAuthenticated, isLoading, login } = useAuth();
@@ -48,9 +49,14 @@ function AuthenticatedApp() {
 
 function Router() {
   return (
-    <AuthProvider>
-      <AuthenticatedApp />
-    </AuthProvider>
+    <Switch>
+      <Route path="/init-db" component={InitializeDatabasePage} />
+      <Route>
+        <AuthProvider>
+          <AuthenticatedApp />
+        </AuthProvider>
+      </Route>
+    </Switch>
   );
 }
 

@@ -15,6 +15,17 @@ import { z } from "zod";
 const DELETE_PASSWORD = "0102";
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // Database initialization endpoint
+  app.post("/api/initialize-db", async (req, res) => {
+    try {
+      console.log("Initializing database...");
+      await storage.initializeDatabase();
+      res.json({ message: "Database initialized successfully" });
+    } catch (error) {
+      console.error("Database initialization failed:", error);
+      res.status(500).json({ message: "Database initialization failed", error: error instanceof Error ? error.message : String(error) });
+    }
+  });
   // Get all businesses with pagination
   app.get("/api/businesses", async (req, res) => {
     try {
