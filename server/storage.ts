@@ -360,66 +360,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   async initializeDatabase(): Promise<void> {
-    // First, try to create tables if they don't exist using raw SQL
     try {
-      const client = await pool.connect();
+      // For SQLite, tables are created automatically by Drizzle
+      console.log("Database tables initialized with SQLite");
       
-      // Create admin_users table
-      await client.query(`
-        CREATE TABLE IF NOT EXISTS admin_users (
-          id SERIAL PRIMARY KEY,
-          username VARCHAR(255) UNIQUE NOT NULL,
-          password VARCHAR(255) NOT NULL,
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
-      `);
-
-      // Create businesses table  
-      await client.query(`
-        CREATE TABLE IF NOT EXISTS businesses (
-          id SERIAL PRIMARY KEY,
-          name VARCHAR(255) NOT NULL,
-          tax_id VARCHAR(100) UNIQUE,
-          address TEXT,
-          phone VARCHAR(50),
-          email VARCHAR(255),
-          website VARCHAR(255),
-          industry VARCHAR(255),
-          contact_person VARCHAR(255),
-          account VARCHAR(255),
-          password VARCHAR(255),
-          bank_account VARCHAR(255),
-          bank_name VARCHAR(255),
-          custom_fields JSONB DEFAULT '{}',
-          notes TEXT,
-          access_code VARCHAR(255),
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
-      `);
-
-      // Create document_transactions table
-      await client.query(`
-        CREATE TABLE IF NOT EXISTS document_transactions (
-          id SERIAL PRIMARY KEY,
-          business_id INTEGER NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
-          document_type VARCHAR(255) NOT NULL,
-          transaction_type VARCHAR(50) NOT NULL,
-          handled_by VARCHAR(255) NOT NULL,
-          transaction_date TIMESTAMP NOT NULL,
-          notes TEXT,
-          signed_file_path VARCHAR(500),
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
-      `);
-
-      client.release();
-      console.log("Database tables created successfully");
-    } catch (error) {
-      console.error("Error creating tables:", error);
-    }
-
-    // Create admin user if not exists  
-    try {
+      // Create admin user if not exists  
       await this.createAdminUser({
         username: "quanadmin",
         password: "01020811"
