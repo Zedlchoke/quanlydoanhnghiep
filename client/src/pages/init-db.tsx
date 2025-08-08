@@ -6,6 +6,7 @@ import { CheckCircle, AlertCircle, Loader2 } from "lucide-react";
 
 export default function InitializeDatabasePage() {
   const [isInitializing, setIsInitializing] = useState(false);
+  const [isMigrating, setIsMigrating] = useState(false);
   const [result, setResult] = useState<{ success: boolean; message: string } | null>(null);
 
   const initializeDatabase = async () => {
@@ -37,30 +38,78 @@ export default function InitializeDatabasePage() {
     }
   };
 
+  const runMigration = async () => {
+    setIsMigrating(true);
+    setResult(null);
+
+    try {
+      const response = await fetch("/api/migrate", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        setResult({ success: true, message: data.message });
+      } else {
+        setResult({ success: false, message: data.message || "Lỗi migration" });
+      }
+    } catch (error) {
+      setResult({ 
+        success: false, 
+        message: "Không thể chạy migration: " + (error instanceof Error ? error.message : String(error))
+      });
+    } finally {
+      setIsMigrating(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
           <CardTitle>Khởi Tạo Cơ Sở Dữ Liệu</CardTitle>
           <CardDescription>
-            Chạy lệnh này để khởi tạo cơ sở dữ liệu và tạo tài khoản admin
+            Sửa lỗi 500 khi đăng nhập và thêm doanh nghiệp trên production. Chạy Migration trước!
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <Button 
-            onClick={initializeDatabase}
-            disabled={isInitializing}
-            className="w-full"
-          >
-            {isInitializing ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Đang khởi tạo...
-              </>
-            ) : (
-              "Khởi Tạo Cơ Sở Dữ Liệu"
-            )}
-          </Button>
+          <div className="space-y-3">
+            <Button 
+              onClick={runMigration}
+              disabled={isMigrating || isInitializing}
+              className="w-full"
+              variant="default"
+            >
+              {isMigrating ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Đang chạy Migration...
+                </>
+              ) : (
+                "🚀 Chạy Migration (Production Fix)"
+              )}
+            </Button>
+            
+            <Button 
+              onClick={initializeDatabase}
+              disabled={isInitializing || isMigrating}
+              className="w-full"
+              variant="outline"
+            >
+              {isInitializing ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Đang khởi tạo...
+                </>
+              ) : (
+                "Khởi Tạo Cơ Sở Dữ Liệu (Backup)"
+              )}
+            </Button>
+          </div>
 
           {result && (
             <Alert variant={result.success ? "default" : "destructive"}>
