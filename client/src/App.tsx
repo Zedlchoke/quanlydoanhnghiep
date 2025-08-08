@@ -4,7 +4,7 @@ import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { AuthProvider, useAuth } from "@/hooks/use-new-auth.ts";
+import { AuthProvider, useAuth } from "@/hooks/use-new-auth.tsx";
 import { SyncProvider } from "@/contexts/sync-context";
 
 import { NewLoginPage } from "@/pages/new-login";
