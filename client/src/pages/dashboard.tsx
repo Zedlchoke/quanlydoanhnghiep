@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Building2, Plus, Search, LogIn, LogOut, Settings, Key } from "lucide-react";
+import logoImage from "@assets/Picture1_1754621344471.png";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -8,27 +9,32 @@ import BusinessForm from "@/components/business-form";
 import SearchForm from "@/components/search-form";
 import BusinessList from "@/components/business-list";
 import { DocumentTransactionForm } from "@/components/document-transaction-form";
+import { MultiDocumentTransactionForm } from "@/components/multi-document-transaction-form";
+import { BusinessAccountManager } from "@/components/BusinessAccountManager";
+import { EnhancedDocumentList } from "@/components/enhanced-document-list";
+import { BusinessTransactionHistory } from "@/components/business-transaction-history";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { useAuth } from "@/hooks/use-auth";
+import { useAuth } from "@/hooks/use-new-auth";
+
 import type { Business } from "@shared/schema";
 
-interface DashboardProps {
-  onShowLogin: () => void;
-}
-
-export default function Dashboard({ onShowLogin }: DashboardProps) {
-  const { user, isAuthenticated, logout } = useAuth();
+export default function Dashboard() {
+  const { user, logout } = useAuth();
   const [page, setPage] = useState(1);
+  const [sortBy, setSortBy] = useState('createdAt');
+  const [sortOrder, setSortOrder] = useState('asc');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
   const [editingBusiness, setEditingBusiness] = useState<Business | null>(null);
   const [searchResults, setSearchResults] = useState<Business[] | null>(null);
   const [documentBusiness, setDocumentBusiness] = useState<Business | null>(null);
+  const [transactionHistoryBusiness, setTransactionHistoryBusiness] = useState<Business | null>(null);
+  const [accountsBusiness, setAccountsBusiness] = useState<Business | null>(null);
 
   const { data: businessData, isLoading, refetch } = useQuery({
-    queryKey: ["/api/businesses", { page, limit: 10 }],
+    queryKey: ["/api/businesses", { page, limit: 10, sortBy, sortOrder }],
     queryFn: async () => {
-      const response = await fetch(`/api/businesses?page=${page}&limit=10`);
+      const response = await fetch(`/api/businesses?page=${page}&limit=10&sortBy=${sortBy}&sortOrder=${sortOrder}`);
       if (!response.ok) throw new Error("Failed to fetch businesses");
       return response.json();
     },
@@ -59,46 +65,50 @@ export default function Dashboard({ onShowLogin }: DashboardProps) {
     setSearchResults(null);
   };
 
+  const handleSortChange = (newSortBy: string, newSortOrder: string) => {
+    setSortBy(newSortBy);
+    setSortOrder(newSortOrder);
+    setPage(1); // Reset to first page when sorting changes
+  };
+
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50">
       {/* Navigation */}
-      <nav className="bg-white border-b border-slate-200 sticky top-0 z-50">
+      <nav className="bg-white/90 backdrop-blur-sm border-b border-purple-200 sticky top-0 z-50 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center space-x-3">
-              <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                <Building2 className="w-4 h-4 text-primary-foreground" />
+              <div className="w-8 h-8 bg-white rounded-lg flex items-center justify-center shadow-sm p-1">
+                <img 
+                  src={logoImage} 
+                  alt="Royal Việt Nam Logo" 
+                  className="w-full h-full object-contain"
+                />
               </div>
-              <h1 className="text-xl font-semibold text-slate-900">Phần Mềm Quản Lý Doanh Nghiệp Long Quân</h1>
+              <h1 className="text-xl font-semibold text-slate-900">Phần Mềm Quản Lý Doanh Nghiệp Royal Việt Nam</h1>
             </div>
             
             <div className="flex items-center space-x-3">
-              {isAuthenticated ? (
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="outline" className="flex items-center gap-2">
-                      <Settings className="h-4 w-4" />
-                      Admin: {user?.username}
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem>
-                      <Key className="mr-2 h-4 w-4" />
-                      Đổi Mật Khẩu
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={logout}>
-                      <LogOut className="mr-2 h-4 w-4" />
-                      Đăng Xuất
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              ) : (
-                <Button variant="outline" onClick={onShowLogin} className="flex items-center gap-2">
-                  <LogIn className="h-4 w-4" />
-                  Đăng Nhập Admin
-                </Button>
-              )}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" className="flex items-center gap-2">
+                    <Settings className="h-4 w-4" />
+                    {user?.userType === "admin" ? `Admin: ${user?.identifier}` : 
+                     user?.userType === "employee" ? `Nhân viên: ${user?.identifier}` : "User"}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem>
+                    <Key className="mr-2 h-4 w-4" />
+                    Đổi Mật Khẩu
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={logout}>
+                    <LogOut className="mr-2 h-4 w-4" />
+                    Đăng Xuất
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </div>
         </div>
@@ -186,12 +196,16 @@ export default function Dashboard({ onShowLogin }: DashboardProps) {
           onEdit={setEditingBusiness}
           onBusinessDeleted={handleBusinessDeleted}
           onViewDocuments={setDocumentBusiness}
+          onViewTransactionHistory={setTransactionHistoryBusiness}
           searchResults={searchResults}
           onClearSearch={clearSearch}
           currentPage={page}
           totalPages={totalPages}
           onPageChange={setPage}
-          isAdmin={isAuthenticated}
+          isAdmin={user?.userType === "admin"}
+          sortBy={sortBy}
+          sortOrder={sortOrder}
+          onSortChange={handleSortChange}
         />
 
         {/* Add/Edit Business Modal */}
@@ -231,14 +245,37 @@ export default function Dashboard({ onShowLogin }: DashboardProps) {
           </DialogContent>
         </Dialog>
 
-        {/* Document Transaction Modal */}
-        {documentBusiness && (
-          <DocumentTransactionForm
-            businessId={documentBusiness.id}
-            businessName={documentBusiness.name}
-            onClose={() => setDocumentBusiness(null)}
+        {/* Document Transaction List luôn hiển thị ở bottom */}
+        <div className="mt-8">
+          <EnhancedDocumentList 
+            selectedBusinessId={documentBusiness?.id}
+            selectedBusinessName={documentBusiness?.name}
+            isVisible={true}
+          />
+        </div>
+
+        {/* Business Account Manager Modal */}
+        {accountsBusiness && (
+          <BusinessAccountManager
+            business={accountsBusiness}
+            isOpen={!!accountsBusiness}
+            onClose={() => setAccountsBusiness(null)}
           />
         )}
+
+        {/* Document Transaction Modal (ẩn, không dùng nữa) */}
+        {false && documentBusiness && (
+          <DocumentTransactionForm
+            business={documentBusiness}
+          />
+        )}
+
+        {/* Business Transaction History Modal */}
+        <BusinessTransactionHistory
+          business={transactionHistoryBusiness}
+          isOpen={!!transactionHistoryBusiness}
+          onClose={() => setTransactionHistoryBusiness(null)}
+        />
       </div>
     </div>
   );
