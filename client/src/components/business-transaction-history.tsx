@@ -53,7 +53,7 @@ export function BusinessTransactionHistory({ business, isOpen, onClose }: Busine
   // Lọc transactions theo ngày tháng
   const filteredTransactions = transactions.filter(transaction => {
     const transactionDate = new Date(transaction.deliveryDate);
-    
+
     if (dateFilter.filterType === 'specific') {
       if (dateFilter.year) {
         const year = transactionDate.getFullYear().toString();
@@ -77,7 +77,7 @@ export function BusinessTransactionHistory({ business, isOpen, onClose }: Busine
         if (transactionDate > toDate) return false;
       }
     }
-    
+
     return true;
   });
 
@@ -134,7 +134,7 @@ export function BusinessTransactionHistory({ business, isOpen, onClose }: Busine
             Lịch sử giao dịch hồ sơ - {business?.name}
           </DialogTitle>
         </DialogHeader>
-        
+
         <div className="space-y-6">
           {/* Bộ lọc thời gian */}
           <Card>
@@ -201,6 +201,7 @@ export function BusinessTransactionHistory({ business, isOpen, onClose }: Busine
                         <SelectValue placeholder="Chọn năm" />
                       </SelectTrigger>
                       <SelectContent>
+                        <SelectItem value="all">Tất cả năm</SelectItem>
                         {years.map(year => (
                           <SelectItem key={year} value={year}>{year}</SelectItem>
                         ))}
@@ -217,6 +218,7 @@ export function BusinessTransactionHistory({ business, isOpen, onClose }: Busine
                         <SelectValue placeholder="Chọn tháng" />
                       </SelectTrigger>
                       <SelectContent>
+                        <SelectItem value="all">Tất cả tháng</SelectItem>
                         {months.map(month => (
                           <SelectItem key={month.value} value={month.value}>{month.label}</SelectItem>
                         ))}
@@ -233,6 +235,7 @@ export function BusinessTransactionHistory({ business, isOpen, onClose }: Busine
                         <SelectValue placeholder="Chọn ngày" />
                       </SelectTrigger>
                       <SelectContent>
+                        <SelectItem value="all">Tất cả ngày</SelectItem>
                         {days.map(day => (
                           <SelectItem key={day.value} value={day.value}>{day.label}</SelectItem>
                         ))}

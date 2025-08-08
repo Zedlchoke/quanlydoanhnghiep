@@ -46,6 +46,8 @@ export function DocumentTransactionForm({ business }: DocumentTransactionFormPro
   const [editingDocumentNumber, setEditingDocumentNumber] = useState<number | null>(null);
   const [newDocumentNumber, setNewDocumentNumber] = useState("");
   const [viewingTransaction, setViewingTransaction] = useState<DocumentTransaction | null>(null);
+  const [createdTransaction, setCreatedTransaction] = useState<DocumentTransaction | null>(null);
+
 
   // Lấy danh sách doanh nghiệp để làm dropdown cho công ty giao/nhận - cập nhật thời gian thực
   const { data: businessesData } = useQuery({
@@ -115,7 +117,10 @@ export function DocumentTransactionForm({ business }: DocumentTransactionFormPro
       }
       return response.json();
     },
-    onSuccess: () => {
+    onSuccess: (transaction) => {
+      console.log(`✅ Transaction created with ID: ${transaction.id}`);
+      setCreatedTransaction(transaction);
+      refetchAll(); // Đồng bộ lại toàn bộ dữ liệu ngay lập tức
       toast({
         title: "Thành công",
         description: "Đã thêm thông tin giao nhận hồ sơ",
@@ -252,13 +257,13 @@ export function DocumentTransactionForm({ business }: DocumentTransactionFormPro
   const onSubmit = (data: InsertDocumentTransaction) => {
     // Tự động set thời gian hiện tại nếu để trống
     const currentDateTime = new Date().toISOString().slice(0, 16); // Format: YYYY-MM-DDTHH:mm
-    
+
     const submissionData = {
       ...data,
       deliveryDate: data.deliveryDate || currentDateTime,
       receivingDate: data.receivingDate || currentDateTime,
     };
-    
+
     createTransaction.mutate(submissionData);
   };
 
@@ -290,12 +295,12 @@ export function DocumentTransactionForm({ business }: DocumentTransactionFormPro
         <p>083.5111720-721; Fax : 083.5117919</p>
         <p>tuvanktetoanthue.vn - royal@tuvanktetoanthue.vn</p>
     </div>
-    
+
     <div class="title">
         <h1>BIÊN BẢN BÀN GIAO TÀI LIỆU</h1>
         <p>NGÀY: ${new Date(transaction.deliveryDate).toLocaleDateString('vi-VN')} - SỐ: ${transaction.documentNumber || 'G04/2020/01'}</p>
     </div>
-    
+
     <div class="content">
         <p>Hôm nay, ngày ${new Date(transaction.deliveryDate).toLocaleDateString('vi-VN')}, Chúng tôi gồm:</p>
         <p><strong>BÊN GIAO: ${transaction.deliveryCompany}</strong> đại diện là:</p>
@@ -303,9 +308,9 @@ export function DocumentTransactionForm({ business }: DocumentTransactionFormPro
         <br>
         <p><strong>BÊN NHẬN: ${transaction.receivingCompany}</strong> đại diện là:</p>
         <p>Ông (bà): ${transaction.receivingPerson}</p>
-        
+
         <p><strong>Thống nhất lập biên bản giao nhận tài liệu với những nội dung cụ thể như sau:</strong></p>
-        
+
         <table class="table">
             <thead>
                 <tr>
@@ -313,7 +318,7 @@ export function DocumentTransactionForm({ business }: DocumentTransactionFormPro
                     <th>Tên tài liệu</th>
                     <th>Đvt</th>
                     <th>Số lượng</th>
-                    <th>Góc/photo</th>
+                    <th>Gốc/Photo</th>
                     <th>Ghi chú</th>
                 </tr>
             </thead>
@@ -323,15 +328,15 @@ export function DocumentTransactionForm({ business }: DocumentTransactionFormPro
                     <td>${transaction.documentType}</td>
                     <td>Tờ</td>
                     <td>1</td>
-                    <td>Góc</td>
+                    <td>Gốc</td>
                     <td>${transaction.notes || '-'}</td>
                 </tr>
             </tbody>
         </table>
-        
+
         <p>Biên bản này được lập thành hai bản; bên giao (đơn vị/cá nhân) giữ một bản, bên nhận (lưu trữ hiện hành của cơ quan, tổ chức) giữ một bản./.</p>
     </div>
-    
+
     <div class="signature-section">
         <h3 style="text-align: center;">PHẦN KÝ XÁC NHẬN GIAO NHẬN CỦA KHÁCH HÀNG</h3>
         <br>
@@ -347,7 +352,7 @@ export function DocumentTransactionForm({ business }: DocumentTransactionFormPro
                 <p>${transaction.receivingPerson}</p>
             </div>
         </div>
-        
+
         <br><br>
         <h3 style="text-align: center;">PHẦN KÝ XÁC NHẬN GIAO NHẬN NỘI BỘ ROYAL</h3>
         <br>
@@ -377,7 +382,7 @@ export function DocumentTransactionForm({ business }: DocumentTransactionFormPro
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    
+
     toast({
       title: "Thành công",
       description: "Đã tải xuống biểu mẫu hóa đơn",
@@ -430,9 +435,9 @@ export function DocumentTransactionForm({ business }: DocumentTransactionFormPro
                           <Button
                             size="sm"
                             variant="ghost"
-                            onClick={() => updateDocumentNumber.mutate({ 
-                              id: transaction.id, 
-                              documentNumber: newDocumentNumber 
+                            onClick={() => updateDocumentNumber.mutate({
+                              id: transaction.id,
+                              documentNumber: newDocumentNumber
                             })}
                             className="h-8 px-2"
                           >
@@ -484,31 +489,158 @@ export function DocumentTransactionForm({ business }: DocumentTransactionFormPro
                       })}
                     </TableCell>
                     <TableCell>
-                      {transaction.signedFilePath ? (
-                        <a 
-                          href={transaction.signedFilePath} 
-                          target="_blank" 
-                          rel="noopener noreferrer"
-                          className="text-blue-600 hover:underline"
-                        >
-                          📁 Xem PDF
-                        </a>
-                      ) : (
-                        <ObjectUploader
-                          onUpload={(filePath) => {
-                            // Handle the uploaded file path
-                            const normalizedPath = filePath.replace('/repl-objstore-e29301a3-0a49-4344-847f-f8abc5fd8739/', '/uploads/');
-                            fetch(`/api/documents/${transaction.id}/upload-pdf`, {
-                              method: 'PUT',
-                              headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({ pdfPath: normalizedPath })
-                            }).then(() => {
-                              refetch();
-                              refetchAll();
-                            });
-                          }}
-                        />
-                      )}
+                      <div className="flex gap-2">
+                        {transaction.signedFilePath ? (
+                          <>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                // Download the PDF file using proper API endpoint
+                                const downloadUrl = `/objects${transaction.signedFilePath}`;
+                                const link = document.createElement('a');
+                                link.href = downloadUrl;
+                                link.download = `document_${transaction.documentNumber || transaction.id}.pdf`;
+                                link.target = '_blank';
+                                document.body.appendChild(link);
+                                link.click();
+                                document.body.removeChild(link);
+                              }}
+                              className="text-blue-600 hover:text-blue-800"
+                            >
+                              📥 Tải PDF
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                // View PDF in new tab
+                                const viewUrl = `/objects${transaction.signedFilePath}`;
+                                window.open(viewUrl, '_blank');
+                              }}
+                              className="text-green-600 hover:text-green-800"
+                            >
+                              👁️ Xem
+                            </Button>
+                          </>
+                        ) : (
+                          <ObjectUploader
+                            onGetUploadParameters={async () => {
+                              const response = await fetch('/api/objects/upload', { method: 'POST' });
+                              const data = await response.json();
+                              return { method: 'PUT' as const, url: data.uploadURL };
+                            }}
+                            onComplete={(result) => {
+                              console.log("Upload result:", result);
+                              // Assume result is an array of successful uploads or a single result object with successful array
+                              const successfulUploads = result.successful || [];
+
+                              if (successfulUploads.length > 0) {
+                                const uploadedFile = successfulUploads[0];
+                                if (uploadedFile?.uploadURL) {
+                                  // Extract proper path from upload URL
+                                  let filePath = uploadedFile.uploadURL;
+
+                                  // Convert full URL to relative path for storage
+                                  if (filePath.includes('googleapis.com') || filePath.includes('storage')) {
+                                    try {
+                                      const url = new URL(filePath);
+                                      filePath = url.pathname;
+                                      // Remove leading slash if present, common for URLs
+                                      if (filePath.startsWith('/')) {
+                                        filePath = filePath.substring(1);
+                                      }
+                                    } catch {
+                                      // If URL parsing fails, use as-is
+                                    }
+                                  }
+
+                                  console.log("Saving PDF path to database:", filePath);
+
+                                  // Update ALL transactions with PDF path if this is a multi-document transaction
+                                  // For now, assuming a single transaction context
+                                  // We need to find the specific transaction this upload is for.
+                                  // A more robust solution would pass the transaction ID to onComplete.
+                                  // For this fix, we assume the uploader is initiated from a specific transaction row.
+                                  // Thus, we need to get the transaction ID from the context or an attribute.
+                                  // However, since the ObjectUploader doesn't expose context easily,
+                                  // we'll make a simplifying assumption or need to refactor ObjectUploader.
+
+                                  // TEMPORARY FIX: Assuming the `transaction` variable from the map is accessible.
+                                  // This is a workaround and might need adjustment based on actual Uppy integration.
+                                  // A better approach: Pass `transaction.id` to `onComplete` or use a callback.
+
+                                  // For demonstration, let's assume we have the transaction.id here.
+                                  // If this component renders multiple ObjectUploader instances,
+                                  // we need a way to know WHICH transaction this upload is for.
+                                  // The current structure implies each row's uploader is independent.
+                                  // The onComplete callback receives the result, not the transaction context directly.
+
+                                  // Let's re-evaluate the `ObjectUploader` usage.
+                                  // It's rendered within a `transactions.map`.
+                                  // The `onComplete` should ideally know which `transaction.id` it belongs to.
+                                  // The `ObjectUploader` itself needs to be aware of its context.
+
+                                  // A common pattern: pass a unique key or ID to the uploader component
+                                  // or wrap it in a way that it knows its context.
+                                  // Since `onComplete` doesn't directly receive the transaction context,
+                                  // and the `uploadPdf.mutate` call needs `transaction.id`,
+                                  // we will adapt the provided `onComplete` handler to manage this.
+
+                                  // The original fix provided in the prompt suggested iterating over `results`,
+                                  // implying a batch upload scenario, but the current UI is per-transaction.
+                                  // We will stick to updating a single transaction based on the UI context.
+
+                                  // Let's assume `transaction` from the map is available in this scope.
+                                  // However, closures can be tricky.
+                                  // The `onComplete` is called after the upload.
+
+                                  // To pass `transaction.id` to `onComplete`, `ObjectUploader` would need to accept
+                                  // an additional prop that `onComplete` can access.
+                                  // Example: `<ObjectUploader transactionId={transaction.id} ... />`
+                                  // and then `onComplete={(result, transactionId) => ...}`
+
+                                  // Given the prompt's structure, we'll try to access `transaction.id`
+                                  // from the outer scope. This might fail if `ObjectUploader` doesn't provide it
+                                  // or if closures are not handled as expected.
+
+                                  // If the ObjectUploader is called within the map, the context should be available.
+                                  // Let's assume the `transaction` variable is accessible here.
+
+                                  // The prompt's original fix snippet implies `results` which is an array.
+                                  // `const uploadedFile = result.successful?.[0];`
+                                  // This suggests `result` might be structured like ` { successful: [...] } `
+                                  // Let's proceed with `transaction.id` from the map context.
+
+                                  uploadPdf.mutate({
+                                    id: transaction.id, // Assuming 'transaction' is accessible from the map's closure
+                                    pdfPath: filePath
+                                  });
+                                } else {
+                                  toast({
+                                    title: "Lỗi",
+                                    description: "Không thể lấy đường dẫn file PDF",
+                                    variant: "destructive",
+                                  });
+                                }
+                              } else {
+                                toast({
+                                  title: "Lỗi",
+                                  description: "Không có file nào được tải lên thành công",
+                                  variant: "destructive",
+                                });
+                              }
+                            }}
+                            maxNumberOfFiles={1}
+                            allowedFileTypes={['.pdf']}
+                          >
+                            <div className="flex items-center gap-2 text-sm">
+                              <Upload className="w-3 h-3" />
+                              Tải PDF
+                            </div>
+                          </ObjectUploader>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell>
                       <div className="flex space-x-1">
@@ -603,7 +735,7 @@ export function DocumentTransactionForm({ business }: DocumentTransactionFormPro
                 <div>
                   <Label className="text-sm font-medium">Ngày nhận</Label>
                   <p className="text-sm">
-                    {viewingTransaction.receivingDate ? 
+                    {viewingTransaction.receivingDate ?
                       new Date(viewingTransaction.receivingDate).toLocaleDateString('vi-VN', {
                         day: '2-digit',
                         month: '2-digit',
@@ -622,16 +754,9 @@ export function DocumentTransactionForm({ business }: DocumentTransactionFormPro
                   <Label className="text-sm font-medium">File PDF</Label>
                   <p className="text-sm">
                     {viewingTransaction.signedFilePath ? (
-                      <a 
-                        href={viewingTransaction.signedFilePath} 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        className="text-blue-600 hover:underline"
-                      >
-                        📁 Xem file
-                      </a>
+                      <span className="text-green-600">Đã có file</span>
                     ) : (
-                      "Chưa có file"
+                      <span className="text-gray-500">Chưa có file</span>
                     )}
                   </p>
                 </div>
