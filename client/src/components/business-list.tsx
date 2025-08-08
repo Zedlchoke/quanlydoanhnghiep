@@ -1,10 +1,12 @@
 import { useState } from "react";
-import { Building2, Edit, Trash2, X, FileText } from "lucide-react";
+import { Building2, Edit, Trash2, X, FileText, History, ArrowUpDown, ArrowUp, ArrowDown, Key, Settings } from "lucide-react";
+import { BusinessAccountManager } from "./BusinessAccountManager";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from "@/components/ui/pagination";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import DeleteConfirmation from "./delete-confirmation";
 import type { Business } from "@shared/schema";
 
@@ -14,12 +16,17 @@ interface BusinessListProps {
   onEdit: (business: Business) => void;
   onBusinessDeleted: () => void;
   onViewDocuments: (business: Business) => void;
+  onViewTransactionHistory: (business: Business) => void;
+  onViewAccounts?: (business: Business) => void;
   searchResults: Business[] | null;
   onClearSearch: () => void;
   currentPage: number;
   totalPages: number;
   onPageChange: (page: number) => void;
   isAdmin: boolean;
+  sortBy: string;
+  sortOrder: string;
+  onSortChange: (sortBy: string, sortOrder: string) => void;
 }
 
 export default function BusinessList({ 
@@ -28,12 +35,17 @@ export default function BusinessList({
   onEdit, 
   onBusinessDeleted,
   onViewDocuments,
+  onViewTransactionHistory,
+  onViewAccounts,
   searchResults,
   onClearSearch,
   currentPage,
   totalPages,
   onPageChange,
-  isAdmin
+  isAdmin,
+  sortBy,
+  sortOrder,
+  onSortChange
 }: BusinessListProps) {
   const [deleteTarget, setDeleteTarget] = useState<Business | null>(null);
 
@@ -55,17 +67,51 @@ export default function BusinessList({
     <>
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between mb-4">
             <CardTitle>
               {searchResults ? "Kết Quả Tìm Kiếm" : "Danh Sách Doanh Nghiệp"}
             </CardTitle>
-            {searchResults && (
-              <Button variant="outline" size="sm" onClick={onClearSearch}>
-                <X className="w-4 h-4 mr-2" />
-                Xóa Bộ Lọc
-              </Button>
-            )}
+            <div className="flex items-center gap-2">
+              {searchResults && (
+                <Button variant="outline" size="sm" onClick={onClearSearch}>
+                  <X className="w-4 h-4 mr-2" />
+                  Xóa Bộ Lọc
+                </Button>
+              )}
+            </div>
           </div>
+          
+          {!searchResults && (
+            <div className="flex items-center gap-4 mb-4">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium">Sắp xếp theo:</span>
+                <Select value={sortBy} onValueChange={(value) => onSortChange(value, sortOrder)}>
+                  <SelectTrigger className="w-40">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="createdAt">Thời gian tạo</SelectItem>
+                    <SelectItem value="name">Tên A-Z</SelectItem>
+                    <SelectItem value="taxId">Mã số thuế</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onSortChange(sortBy, sortOrder === 'asc' ? 'desc' : 'asc')}
+                className="flex items-center gap-1"
+              >
+                {sortOrder === 'asc' ? (
+                  <ArrowUp className="w-4 h-4" />
+                ) : (
+                  <ArrowDown className="w-4 h-4" />
+                )}
+                {sortOrder === 'asc' ? 'Tăng dần' : 'Giảm dần'}
+              </Button>
+            </div>
+          )}
         </CardHeader>
         <CardContent>
           {businesses.length === 0 ? (
@@ -85,7 +131,7 @@ export default function BusinessList({
                     <TableHead>Website</TableHead>
                     <TableHead>Điện Thoại</TableHead>
                     <TableHead>Ngành Nghề</TableHead>
-                    <TableHead>Người Liên Hệ</TableHead>
+                    <TableHead>Người Đại Diện</TableHead>
                     <TableHead>Tài Khoản</TableHead>
                     <TableHead>Mật Khẩu</TableHead>
                     <TableHead>Ngày Tạo</TableHead>
@@ -119,14 +165,26 @@ export default function BusinessList({
                       <TableCell>{formatDate(business.createdAt.toString())}</TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end space-x-2">
+                          <BusinessAccountManager business={business} />
+                          
                           <Button
                             variant="ghost"
                             size="sm"
                             onClick={() => onViewDocuments(business)}
-                            title="Quản lý hồ sơ"
+                            title="Giao nhận hồ sơ"
                           >
                             <FileText className="w-4 h-4" />
                           </Button>
+                          
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => onViewTransactionHistory(business)}
+                            title="Lịch sử giao dịch"
+                          >
+                            <History className="w-4 h-4" />
+                          </Button>
+
                           {isAdmin && (
                             <>
                               <Button

@@ -1,0 +1,11 @@
+Không thể upload file pdf được
+vẫn không thể xoá giao dịch hồ sơ (nếu không sửa được thì có thể tạo thêm tiện ích ẩn giao dịch đó vào phần riêng(có thể huỷ ẩn) cũng được) Lỗi không thể tạo giao dịch hồ sơ được :Không thể tạo giao dịch: Failed to create transaction: {"me: không hợp lệ", "errors":["code":"invalid_union", "unionError:
+K"code":"invalid_union", "unionErrors":K"issues":
+K"code"."invalid_type" "expected":"string", "received"."unde ["documentTypes"],"message":"Required"], "name":"ZodEi [{"code":"invalid_type", "expected" :"number", "received":"un ["documentTypes"], "message":"Required"}], "name":"ZodEi ["code":"invalid_type" "expected":"boolean", "received":"un ["documentTypes"],"message" :"Required"}],"name":"ZodEi [{"code":"invalid_type", "expected":"null", "received":"undefir ["documentTypes"],"message":"Required"}],"name":"ZodEr ["documentTypes"], "message":"Invalid input"}], "name":"Zoc ("issues":
+K"code":"invalid_type", "expected": "object" , "received" :"unde ["documentTypes"],"message":"Required"'], "name":"ZodEi [{"code":"invalid_type", "expected":"array" "received":"undel ["documentTypes"], "message":"Required"], "name":"ZodEi ["documentTypes"],"message":"Invalid input"'l}
+ Tôi muốn trong mục thêm doanh nghiệp và thông tin doanh nghiệp, có nút để chỉ xem riêng cho phần tài khoản, trong đó có: +Tài khoản tra cứu HĐĐT có pass và id
++Tài khoản Web HĐĐT có website, pass và id
++Tài khoản Bảo hiểm XH-YT gồm mã bảo hiểm, id, pass chính và pass ly, liên hệ
++Tài khoản thống kê gồm id và pass
++Tài khoản TOKEN gồm id, pass, đơn vị cung cấp, ngày đăng ký, ngày hết hạn.  Tôi muốn thêm mục thông tin Ngày thành lập, vốn điều lệ, website kiểm toán làm mặc định khi thêm tài khoản (có thể không cần show trực tiếp trên danh sách doanh nghiệp cũng được nhưng khi xem thông tin của doanh nghiệp thì phải có những mục đó.
+Tôi muốn xoá icon Lịch sử giao dịch hồ sơ (Phần thao tác trong danh sách doanh nghiệp) và icon tờ giấy gập lại bên trái icon xem lịch sử giao dịch hồ sơ. 

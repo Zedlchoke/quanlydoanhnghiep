@@ -4,15 +4,16 @@ import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { AuthProvider, useAuth } from "@/hooks/use-auth";
-import { LoginForm } from "@/components/login-form";
+import { AuthProvider, useAuth } from "@/hooks/use-new-auth";
+import { SyncProvider } from "@/contexts/sync-context";
+
+import { NewLoginPage } from "@/pages/new-login";
 import Dashboard from "@/pages/dashboard";
 import NotFound from "@/pages/not-found";
 import InitializeDatabasePage from "@/pages/init-db";
 
 function AuthenticatedApp() {
-  const { user, isAuthenticated, isLoading, login } = useAuth();
-  const [showLogin, setShowLogin] = useState(false);
+  const { user, isAuthenticated, isLoading } = useAuth();
 
   if (isLoading) {
     return (
@@ -25,23 +26,13 @@ function AuthenticatedApp() {
     );
   }
 
-  if (showLogin) {
-    return (
-      <LoginForm
-        onLogin={async (credentials) => {
-          const success = await login(credentials);
-          if (success) {
-            setShowLogin(false);
-          }
-          return success;
-        }}
-      />
-    );
+  if (!isAuthenticated) {
+    return <NewLoginPage />;
   }
 
   return (
     <Switch>
-      <Route path="/" component={() => <Dashboard onShowLogin={() => setShowLogin(true)} />} />
+      <Route path="/" component={() => <Dashboard />} />
       <Route component={NotFound} />
     </Switch>
   );
@@ -53,7 +44,9 @@ function Router() {
       <Route path="/init-db" component={InitializeDatabasePage} />
       <Route>
         <AuthProvider>
-          <AuthenticatedApp />
+          <SyncProvider>
+            <AuthenticatedApp />
+          </SyncProvider>
         </AuthProvider>
       </Route>
     </Switch>
@@ -63,10 +56,10 @@ function Router() {
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <Toaster />
-        <Router />
-      </TooltipProvider>
+        <TooltipProvider>
+          <Toaster />
+          <Router />
+        </TooltipProvider>
     </QueryClientProvider>
   );
 }

@@ -1,8 +1,8 @@
-# Phần Mềm Quản Lý Doanh Nghiệp Long Quân
+# Phần Mềm Quản Lý Doanh Nghiệp Royal Việt Nam
 
 ## Overview
 
-This is a full-stack business management application built with React, TypeScript, and Express.js. The system provides CRUD operations for managing business entities, featuring a modern UI built with shadcn/ui components and Tailwind CSS. The application includes comprehensive search functionality, pagination, secure delete operations with password protection, and stores complete business information including account credentials and website links.
+This is a full-stack business management application built with React, TypeScript, and Express.js. The system provides CRUD operations for managing business entities, featuring a modern UI built with shadcn/ui components and Tailwind CSS. The application includes comprehensive search functionality, pagination, secure delete operations with password protection, advanced document management with Word export and PDF upload functionality for signed document tracking workflows, and a simplified 2-tier authentication system.
 
 ## User Preferences
 
@@ -34,9 +34,11 @@ Preferred communication style: Simple, everyday language.
 - **Connection**: Connection pooling with @neondatabase/serverless
 
 ### Security & Authentication
+- **2-Tier Authentication System**: Simplified authentication with Admin (username/password) and Employee (hidden password "royalvietnam")
 - **Delete Protection**: Password-protected delete operations (hardcoded password: "0102")
 - **Input Validation**: Comprehensive validation using Zod schemas
 - **Error Handling**: Centralized error handling with proper HTTP status codes
+- **Object Storage**: Secure file upload/download for document workflows
 
 ### Key Features
 - **CRUD Operations**: Full create, read, update, delete functionality for businesses

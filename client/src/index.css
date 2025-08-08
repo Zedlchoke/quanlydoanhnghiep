@@ -3,20 +3,20 @@
 @tailwind utilities;
 
 :root {
-  --background: hsl(0 0% 100%);
-  --foreground: hsl(210 25% 7.8431%);
-  --card: hsl(180 6.6667% 97.0588%);
-  --card-foreground: hsl(210 25% 7.8431%);
+  --background: hsl(210 100% 99%);
+  --foreground: hsl(230 30% 15%);
+  --card: hsl(0 0% 100%);
+  --card-foreground: hsl(230 30% 15%);
   --popover: hsl(0 0% 100%);
   --popover-foreground: hsl(210 25% 7.8431%);
-  --primary: hsl(203.8863 88.2845% 53.1373%);
+  --primary: hsl(250 75% 60%);
   --primary-foreground: hsl(0 0% 100%);
-  --secondary: hsl(210 25% 7.8431%);
-  --secondary-foreground: hsl(0 0% 100%);
-  --muted: hsl(240 1.9608% 90%);
-  --muted-foreground: hsl(210 25% 7.8431%);
-  --accent: hsl(211.5789 51.3514% 92.7451%);
-  --accent-foreground: hsl(203.8863 88.2845% 53.1373%);
+  --secondary: hsl(210 80% 95%);
+  --secondary-foreground: hsl(230 30% 15%);
+  --muted: hsl(210 60% 96%);
+  --muted-foreground: hsl(215 20% 55%);
+  --accent: hsl(205 90% 92%);
+  --accent-foreground: hsl(250 75% 60%);
   --destructive: hsl(356.3033 90.5579% 54.3137%);
   --destructive-foreground: hsl(0 0% 100%);
   --border: hsl(201.4286 30.4348% 90.9804%);
@@ -96,6 +96,56 @@
   --shadow-lg: 0px 2px 0px 0px hsl(202.8169 89.1213% 53.1373% / 0.00), 0px 4px 6px -1px hsl(202.8169 89.1213% 53.1373% / 0.00);
   --shadow-xl: 0px 2px 0px 0px hsl(202.8169 89.1213% 53.1373% / 0.00), 0px 8px 10px -1px hsl(202.8169 89.1213% 53.1373% / 0.00);
   --shadow-2xl: 0px 2px 0px 0px hsl(202.8169 89.1213% 53.1373% / 0.00);
+}
+
+/* High contrast mode */
+.high {
+  --background: hsl(0 0% 100%);
+  --foreground: hsl(0 0% 0%);
+  --card: hsl(0 0% 100%);
+  --card-foreground: hsl(0 0% 0%);
+  --popover: hsl(0 0% 100%);
+  --popover-foreground: hsl(0 0% 0%);
+  --primary: hsl(0 0% 0%);
+  --primary-foreground: hsl(0 0% 100%);
+  --secondary: hsl(0 0% 95%);
+  --secondary-foreground: hsl(0 0% 0%);
+  --muted: hsl(0 0% 90%);
+  --muted-foreground: hsl(0 0% 20%);
+  --accent: hsl(0 0% 90%);
+  --accent-foreground: hsl(0 0% 0%);
+  --destructive: hsl(0 100% 40%);
+  --destructive-foreground: hsl(0 0% 100%);
+  --border: hsl(0 0% 0%);
+  --input: hsl(0 0% 100%);
+  --ring: hsl(0 0% 0%);
+}
+
+.high * {
+  border-width: 2px !important;
+  font-weight: 600 !important;
+}
+
+.high .border {
+  border-color: hsl(var(--border)) !important;
+}
+
+.high input, 
+.high textarea, 
+.high select {
+  border: 2px solid hsl(var(--border)) !important;
+  background: hsl(var(--background)) !important;
+  color: hsl(var(--foreground)) !important;
+}
+
+.high button {
+  border: 2px solid hsl(var(--border)) !important;
+  font-weight: 700 !important;
+}
+
+.high .bg-gray-50 {
+  background-color: hsl(var(--muted)) !important;
+  border: 2px solid hsl(var(--border)) !important;
 }
 
 @layer base {

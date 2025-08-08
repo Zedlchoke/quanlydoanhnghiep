@@ -6,11 +6,20 @@ import {
   updateBusinessSchema, 
   searchBusinessSchema, 
   deleteBusinessSchema,
+  deleteDocumentTransactionSchema,
   insertDocumentTransactionSchema,
+  insertBusinessAccountSchema,
+  updateBusinessAccountSchema,
+  uploadSignedDocumentSchema,
   loginSchema,
+  userLoginSchema,
   changePasswordSchema
 } from "@shared/schema";
 import { z } from "zod";
+import { 
+  ObjectStorageService,
+  ObjectNotFoundError,
+} from "./objectStorage";
 
 const DELETE_PASSWORD = "0102";
 
@@ -93,16 +102,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ message: "Migration failed", error: error instanceof Error ? error.message : String(error) });
     }
   });
-  // Get all businesses with pagination
+  // Get all businesses with pagination and sorting
   app.get("/api/businesses", async (req, res) => {
     try {
       const page = parseInt(req.query.page as string) || 1;
       const limit = parseInt(req.query.limit as string) || 10;
+      const sortBy = req.query.sortBy as string || 'createdAt'; // createdAt, name, taxId
+      const sortOrder = req.query.sortOrder as string || 'asc'; // asc, desc
       
-      const result = await storage.getAllBusinesses(page, limit);
+      const result = await storage.getAllBusinesses(page, limit, sortBy, sortOrder);
       res.json(result);
     } catch (error) {
       console.error("Error fetching businesses:", error);
+      res.status(500).json({ message: "Lỗi khi tải danh sách doanh nghiệp" });
+    }
+  });
+
+  // Get all businesses (without pagination) for autocomplete
+  app.get("/api/businesses/all", async (req, res) => {
+    try {
+      const businesses = await storage.getAllBusinessesForAutocomplete();
+      res.json(businesses);
+    } catch (error) {
+      console.error("Error fetching all businesses:", error);
       res.status(500).json({ message: "Lỗi khi tải danh sách doanh nghiệp" });
     }
   });
@@ -231,15 +253,49 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Simple token storage for authentication
-  const authTokens = new Map<string, { adminId: number; username: string }>();
+  // Simple token storage for authentication - updated for new system
+  const authTokens = new Map<string, { userType: string; userData: any }>();
   
   function generateToken(): string {
     return Math.random().toString(36).substring(2) + Date.now().toString(36);
   }
 
-  // Authentication routes
+  // New unified authentication route
   app.post("/api/auth/login", async (req, res) => {
+    try {
+      const validatedData = userLoginSchema.parse(req.body);
+      const authResult = await storage.authenticateUser(validatedData);
+      
+      if (!authResult) {
+        return res.status(401).json({ message: "Thông tin đăng nhập không đúng" });
+      }
+
+      const token = generateToken();
+      authTokens.set(token, authResult);
+
+      res.json({ 
+        success: true, 
+        token,
+        user: {
+          userType: authResult.userType,
+          userData: authResult.userData
+        }
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          message: "Dữ liệu đăng nhập không hợp lệ",
+          errors: error.errors 
+        });
+      }
+      
+      console.error("Error during login:", error);
+      res.status(500).json({ message: "Lỗi khi đăng nhập" });
+    }
+  });
+
+  // Legacy admin login for backward compatibility
+  app.post("/api/auth/admin-login", async (req, res) => {
     try {
       const validatedData = loginSchema.parse(req.body);
       const admin = await storage.authenticateAdmin(validatedData);
@@ -249,7 +305,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const token = generateToken();
-      authTokens.set(token, { adminId: admin.id, username: admin.username });
+      authTokens.set(token, { userType: "admin", userData: admin });
 
       res.json({ 
         success: true, 
@@ -264,8 +320,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
-      console.error("Error during login:", error);
-      res.status(500).json({ message: "Lỗi khi đăng nhập" });
+      console.error("Error during admin login:", error);
+      res.status(500).json({ message: "Lỗi khi đăng nhập admin" });
     }
   });
 
@@ -284,7 +340,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (authData) {
       res.json({ 
         isAuthenticated: true, 
-        admin: { id: authData.adminId, username: authData.username } 
+        user: {
+          userType: authData.userType,
+          userData: authData.userData
+        }
       });
     } else {
       res.json({ isAuthenticated: false });
@@ -296,12 +355,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const token = req.headers.authorization?.replace('Bearer ', '');
       const authData = token ? authTokens.get(token) : null;
       
-      if (!authData) {
-        return res.status(401).json({ message: "Chưa đăng nhập" });
+      if (!authData || authData.userType !== "admin") {
+        return res.status(401).json({ message: "Chưa đăng nhập hoặc không có quyền" });
       }
 
       const validatedData = changePasswordSchema.parse(req.body);
-      const success = await storage.changeAdminPassword(authData.username, validatedData);
+      const success = await storage.changeAdminPassword(authData.userData.username, validatedData);
       
       if (!success) {
         return res.status(400).json({ message: "Mật khẩu hiện tại không đúng" });
@@ -321,6 +380,129 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Route to update business access code (admin only)
+  app.put("/api/businesses/:id/access-code", async (req, res) => {
+    try {
+      const token = req.headers.authorization?.replace('Bearer ', '');
+      const authData = token ? authTokens.get(token) : null;
+      
+      if (!authData || authData.userType !== "admin") {
+        return res.status(401).json({ message: "Chỉ admin mới có quyền thay đổi mã truy cập" });
+      }
+
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "ID không hợp lệ" });
+      }
+
+      const { accessCode } = req.body;
+      if (!accessCode || typeof accessCode !== 'string') {
+        return res.status(400).json({ message: "Mã truy cập không hợp lệ" });
+      }
+
+      const success = await storage.updateBusinessAccessCode(id, accessCode);
+      if (!success) {
+        return res.status(404).json({ message: "Không tìm thấy doanh nghiệp hoặc cập nhật thất bại" });
+      }
+
+      res.json({ success: true, message: "Cập nhật mã truy cập thành công" });
+    } catch (error) {
+      console.error("Error updating access code:", error);
+      res.status(500).json({ message: "Lỗi khi cập nhật mã truy cập" });
+    }
+  });
+
+  // Object storage routes for signed document upload
+  app.post("/api/objects/upload", async (req, res) => {
+    try {
+      const objectStorageService = new ObjectStorageService();
+      const uploadURL = await objectStorageService.getObjectEntityUploadURL();
+      res.json({ uploadURL });
+    } catch (error) {
+      console.error("Error getting upload URL:", error);
+      res.status(500).json({ error: "Failed to get upload URL" });
+    }
+  });
+
+  app.get("/objects/:objectPath(*)", async (req, res) => {
+    const objectStorageService = new ObjectStorageService();
+    try {
+      const objectFile = await objectStorageService.getObjectEntityFile(req.path);
+      objectStorageService.downloadObject(objectFile, res);
+    } catch (error) {
+      console.error("Error accessing object:", error);
+      if (error instanceof ObjectNotFoundError) {
+        return res.sendStatus(404);
+      }
+      return res.sendStatus(500);
+    }
+  });
+
+  // Update document transaction with signed file
+  app.put("/api/documents/:id/upload-pdf", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "ID không hợp lệ" });
+      }
+
+      const { pdfPath } = req.body;
+      if (!pdfPath) {
+        return res.status(400).json({ message: "Đường dẫn PDF không hợp lệ" });
+      }
+
+      const success = await storage.updateDocumentTransactionPdf(id, pdfPath);
+      if (!success) {
+        return res.status(404).json({ message: "Không tìm thấy giao dịch" });
+      }
+
+      res.json({ success: true, message: "Cập nhật file PDF thành công" });
+    } catch (error) {
+      console.error("Error uploading PDF:", error);
+      res.status(500).json({ message: "Lỗi khi cập nhật file PDF" });
+    }
+  });
+
+  // Business accounts routes
+  app.get('/api/businesses/:id/accounts', async (req, res) => {
+    try {
+      const businessId = parseInt(req.params.id);
+      if (isNaN(businessId)) {
+        return res.status(400).json({ message: "ID doanh nghiệp không hợp lệ" });
+      }
+
+      const account = await storage.getBusinessAccount(businessId);
+      return res.json(account);
+    } catch (error) {
+      console.error("Error fetching business account:", error);
+      return res.status(500).json({ message: "Lỗi khi tải thông tin tài khoản" });
+    }
+  });
+
+  app.post('/api/businesses/:id/accounts', async (req, res) => {
+    try {
+      const businessId = parseInt(req.params.id);
+      const data = req.body;
+      const account = await storage.createBusinessAccount({ ...data, businessId });
+      return res.status(201).json(account);
+    } catch (error) {
+      console.error("Error creating business account:", error);
+      return res.status(500).json({ message: "Lỗi khi tạo tài khoản" });
+    }
+  });
+
+  app.put('/api/businesses/:id/accounts', async (req, res) => {
+    try {
+      const businessId = parseInt(req.params.id);
+      const data = req.body;
+      const account = await storage.updateBusinessAccount(businessId, data);
+      return res.json(account);
+    } catch (error) {
+      console.error("Error updating business account:", error);
+      return res.status(500).json({ message: "Lỗi khi cập nhật tài khoản" });
+    }
+  });
+
   // Document transaction routes
   app.post("/api/businesses/:businessId/documents", async (req, res) => {
     try {
@@ -334,7 +516,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         businessId 
       });
       
+      console.log(`Creating document transaction for business ID: ${businessId}`, { businessId, documents: validatedData.documents, deliveryCompany: validatedData.deliveryCompany });
       const transaction = await storage.createDocumentTransaction(validatedData);
+      console.log(`Created transaction with ID: ${transaction.id} for business ${businessId}`);
       res.status(201).json(transaction);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -356,7 +540,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "ID doanh nghiệp không hợp lệ" });
       }
 
+      console.log(`Fetching documents for business ID: ${businessId}`);
       const transactions = await storage.getDocumentTransactionsByBusinessId(businessId);
+      console.log(`Found ${transactions.length} transactions for business ${businessId}:`, transactions.map(t => ({ id: t.id, businessId: t.businessId, documents: t.documents })));
       res.json(transactions);
     } catch (error) {
       console.error("Error fetching document transactions:", error);
@@ -364,18 +550,56 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // API lấy tất cả document transactions
+  app.get("/api/documents", async (req, res) => {
+    try {
+      const transactions = await storage.getAllDocumentTransactions();
+      res.json(transactions);
+    } catch (error) {
+      console.error("Error fetching all document transactions:", error);
+      res.status(500).json({ message: "Lỗi khi tải danh sách giao dịch hồ sơ" });
+    }
+  });
+
+  // API lấy documents liên quan đến một công ty (giao hoặc nhận)
+  app.get("/api/documents/company/:companyName", async (req, res) => {
+    try {
+      const companyName = decodeURIComponent(req.params.companyName);
+      const transactions = await storage.getDocumentTransactionsByCompany(companyName);
+      res.json(transactions);
+    } catch (error) {
+      console.error("Error fetching document transactions by company:", error);
+      res.status(500).json({ message: "Lỗi khi tải hồ sơ theo công ty" });
+    }
+  });
+
+  // API lấy documents theo mã số thuế
+  app.get("/api/documents/tax-id/:taxId", async (req, res) => {
+    try {
+      const taxId = req.params.taxId;
+      const transactions = await storage.getDocumentTransactionsByTaxId(taxId);
+      res.json(transactions);
+    } catch (error) {
+      console.error("Error fetching document transactions by tax ID:", error);
+      res.status(500).json({ message: "Lỗi khi tải hồ sơ theo mã số thuế" });
+    }
+  });
+
   app.delete("/api/documents/:id", async (req, res) => {
     try {
-      const token = req.headers.authorization?.replace('Bearer ', '');
-      const authData = token ? authTokens.get(token) : null;
-      
-      if (!authData) {
-        return res.status(401).json({ message: "Cần quyền admin để xóa" });
-      }
-
       const id = parseInt(req.params.id);
       if (isNaN(id)) {
         return res.status(400).json({ message: "ID không hợp lệ" });
+      }
+
+      // Validate password for deletion
+      const validatedData = deleteDocumentTransactionSchema.parse({
+        id,
+        password: req.body.password
+      });
+
+      if (validatedData.password !== DELETE_PASSWORD) {
+        return res.status(403).json({ message: "Mật khẩu xóa không đúng" });
       }
 
       const success = await storage.deleteDocumentTransaction(id);
@@ -385,8 +609,229 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       res.json({ message: "Xóa giao dịch hồ sơ thành công" });
     } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          message: "Dữ liệu xóa không hợp lệ",
+          errors: error.errors 
+        });
+      }
+      
       console.error("Error deleting document transaction:", error);
       res.status(500).json({ message: "Lỗi khi xóa giao dịch hồ sơ" });
+    }
+  });
+
+  // Business accounts endpoints
+  app.post("/api/businesses/:businessId/accounts", async (req, res) => {
+    try {
+      const businessId = parseInt(req.params.businessId);
+      if (isNaN(businessId)) {
+        return res.status(400).json({ message: "ID doanh nghiệp không hợp lệ" });
+      }
+
+      const validatedData = insertBusinessAccountSchema.parse({
+        ...req.body,
+        businessId
+      });
+
+      const account = await storage.createBusinessAccount(validatedData);
+      res.status(201).json(account);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          message: "Dữ liệu tài khoản không hợp lệ",
+          errors: error.errors 
+        });
+      }
+      
+      console.error("Error creating business account:", error);
+      res.status(500).json({ message: "Lỗi khi tạo tài khoản doanh nghiệp" });
+    }
+  });
+
+  app.get("/api/businesses/:businessId/accounts", async (req, res) => {
+    try {
+      const businessId = parseInt(req.params.businessId);
+      if (isNaN(businessId)) {
+        return res.status(400).json({ message: "ID doanh nghiệp không hợp lệ" });
+      }
+
+      const account = await storage.getBusinessAccountByBusinessId(businessId);
+      res.json(account || null);
+    } catch (error) {
+      console.error("Error fetching business account:", error);
+      res.status(500).json({ message: "Lỗi khi lấy thông tin tài khoản" });
+    }
+  });
+
+  app.put("/api/businesses/:businessId/accounts", async (req, res) => {
+    try {
+      const businessId = parseInt(req.params.businessId);
+      if (isNaN(businessId)) {
+        return res.status(400).json({ message: "ID doanh nghiệp không hợp lệ" });
+      }
+
+      const validatedData = updateBusinessAccountSchema.parse(req.body);
+      const account = await storage.updateBusinessAccount(businessId, validatedData);
+      
+      if (!account) {
+        return res.status(404).json({ message: "Không tìm thấy tài khoản" });
+      }
+
+      res.json(account);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          message: "Dữ liệu cập nhật không hợp lệ",
+          errors: error.errors 
+        });
+      }
+      
+      console.error("Error updating business account:", error);
+      res.status(500).json({ message: "Lỗi khi cập nhật tài khoản" });
+    }
+  });
+
+  // PDF upload endpoints for document transactions
+  app.post("/api/documents/pdf-upload", async (req, res) => {
+    try {
+      const objectStorageService = new ObjectStorageService();
+      const uploadURL = await objectStorageService.getPDFUploadURL();
+      res.json({ uploadURL });
+    } catch (error) {
+      console.error("Error getting PDF upload URL:", error);
+      res.status(500).json({ error: "Failed to get PDF upload URL" });
+    }
+  });
+
+  app.get("/documents/:documentPath(*)", async (req, res) => {
+    const objectStorageService = new ObjectStorageService();
+    try {
+      const pdfFile = await objectStorageService.getPDFFile(req.path);
+      objectStorageService.downloadObject(pdfFile, res);
+    } catch (error) {
+      console.error("Error accessing PDF document:", error);
+      if (error instanceof ObjectNotFoundError) {
+        return res.sendStatus(404);
+      }
+      return res.sendStatus(500);
+    }
+  });
+
+  // Object storage routes
+  app.post("/api/objects/upload", async (req, res) => {
+    try {
+      const objectStorageService = new ObjectStorageService();
+      const uploadURL = await objectStorageService.getPDFUploadURL();
+      res.json({ uploadURL });
+    } catch (error) {
+      console.error("Error getting upload URL:", error);
+      res.status(500).json({ error: "Failed to get upload URL" });
+    }
+  });
+
+  app.get("/objects/:objectPath(*)", async (req, res) => {
+    try {
+      const objectStorageService = new ObjectStorageService();
+      const objectFile = await objectStorageService.getPDFFile(`/documents/${req.params.objectPath}`);
+      objectStorageService.downloadObject(objectFile, res);
+    } catch (error) {
+      console.error("Error downloading object:", error);
+      if (error instanceof ObjectNotFoundError) {
+        return res.sendStatus(404);
+      }
+      return res.sendStatus(500);
+    }
+  });
+
+  // Update document number
+  app.put("/api/documents/:id/number", async (req, res) => {
+    try {
+      const token = req.headers.authorization?.replace('Bearer ', '');
+      const authData = token ? authTokens.get(token) : null;
+      
+      if (!authData) {
+        return res.status(401).json({ message: "Chưa đăng nhập" });
+      }
+
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "ID không hợp lệ" });
+      }
+
+      const { documentNumber } = req.body;
+      if (typeof documentNumber !== 'string') {
+        return res.status(400).json({ message: "Số văn bản không hợp lệ" });
+      }
+
+      const success = await storage.updateDocumentNumber(id, documentNumber);
+      if (!success) {
+        return res.status(404).json({ message: "Không tìm thấy giao dịch hồ sơ" });
+      }
+
+      res.json({ message: "Cập nhật số văn bản thành công" });
+    } catch (error) {
+      console.error("Error updating document number:", error);
+      res.status(500).json({ message: "Lỗi khi cập nhật số văn bản" });
+    }
+  });
+
+  // Upload PDF file for document transaction
+  app.put("/api/documents/:id/upload-pdf", async (req, res) => {
+    try {
+      const token = req.headers.authorization?.replace('Bearer ', '');
+      const authData = token ? authTokens.get(token) : null;
+      
+      if (!authData) {
+        return res.status(401).json({ message: "Chưa đăng nhập" });
+      }
+
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "ID không hợp lệ" });
+      }
+
+      const { pdfPath } = req.body;
+      if (typeof pdfPath !== 'string') {
+        return res.status(400).json({ message: "Đường dẫn PDF không hợp lệ" });
+      }
+
+      const objectStorageService = new ObjectStorageService();
+      const normalizedPath = objectStorageService.normalizeObjectEntityPath(pdfPath);
+
+      const success = await storage.updateDocumentPdf(id, normalizedPath);
+      if (!success) {
+        return res.status(404).json({ message: "Không tìm thấy giao dịch hồ sơ" });
+      }
+
+      res.json({ message: "Tải lên PDF thành công", pdfPath: normalizedPath });
+    } catch (error) {
+      console.error("Error uploading PDF:", error);
+      res.status(500).json({ message: "Lỗi khi tải lên PDF" });
+    }
+  });
+
+  // Get document transactions by tax ID (chỉ hiển thị giao dịch liên quan đến doanh nghiệp có mã số thuế này)
+  app.get("/api/documents/tax-id/:taxId", async (req, res) => {
+    try {
+      const taxId = req.params.taxId;
+      const transactions = await storage.getDocumentTransactionsByTaxId(taxId);
+      res.json(transactions);
+    } catch (error) {
+      console.error("Error fetching document transactions by tax ID:", error);
+      res.status(500).json({ message: "Lỗi khi tải danh sách giao dịch hồ sơ theo mã số thuế" });
+    }
+  });
+
+  // Get document transactions by tax ID (chỉ hiển thị giao dịch liên quan đến doanh nghiệp có mã số thuế này)
+  app.get("/api/documents/tax-id/:taxId", async (req, res) => {
+    try {
+      const taxId = req.params.taxId;
+      const transactions = await storage.getDocumentTransactionsByTaxId(taxId);
+      res.json(transactions);
+    } catch (error) {
+      console.error("Error fetching document transactions by tax ID:", error);
+      res.status(500).json({ message: "Lỗi khi tải danh sách giao dịch hồ sơ theo mã số thuế" });
     }
   });
 

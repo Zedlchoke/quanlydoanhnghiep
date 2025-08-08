@@ -1,40 +1,58 @@
 import { 
   businesses, 
+  businessAccounts,
   documentTransactions, 
   adminUsers,
   type Business, 
+  type BusinessAccount,
   type InsertBusiness, 
+  type InsertBusinessAccount,
   type UpdateBusiness, 
+  type UpdateBusinessAccount,
   type SearchBusiness,
   type DocumentTransaction,
   type InsertDocumentTransaction,
   type AdminUser,
   type InsertAdminUser,
   type LoginRequest,
+  type UserLoginRequest,
   type ChangePasswordRequest
 } from "@shared/schema";
 import { db, pool } from "./db";
-import { eq, like, sql, desc } from "drizzle-orm";
+import { eq, like, sql } from "drizzle-orm";
 
 export interface IStorage {
   // Business operations
   createBusiness(business: InsertBusiness): Promise<Business>;
   getBusinessById(id: number): Promise<Business | undefined>;
-  getAllBusinesses(page?: number, limit?: number): Promise<{ businesses: Business[], total: number }>;
+  getAllBusinesses(page?: number, limit?: number, sortBy?: string, sortOrder?: string): Promise<{ businesses: Business[], total: number }>;
   updateBusiness(business: UpdateBusiness): Promise<Business | undefined>;
   deleteBusiness(id: number): Promise<boolean>;
   searchBusinesses(search: SearchBusiness): Promise<Business[]>;
+  
+
   
   // Document transaction operations
   createDocumentTransaction(transaction: InsertDocumentTransaction): Promise<DocumentTransaction>;
   getDocumentTransactionsByBusinessId(businessId: number): Promise<DocumentTransaction[]>;
   deleteDocumentTransaction(id: number): Promise<boolean>;
+  updateDocumentTransactionSignedFile(id: number, signedFilePath: string): Promise<boolean>;
   
   // Admin operations
   createAdminUser(user: InsertAdminUser): Promise<AdminUser>;
   authenticateAdmin(login: LoginRequest): Promise<AdminUser | null>;
   changeAdminPassword(username: string, request: ChangePasswordRequest): Promise<boolean>;
   getAdminByUsername(username: string): Promise<AdminUser | undefined>;
+  
+  // New authentication system
+  authenticateUser(login: UserLoginRequest): Promise<{ userType: string; userData: any } | null>;
+  getBusinessByTaxId(taxId: string): Promise<Business | undefined>;
+  updateBusinessAccessCode(id: number, accessCode: string): Promise<boolean>;
+  
+  // Business Account methods
+  getBusinessAccount(businessId: number): Promise<BusinessAccount | null>;
+  createBusinessAccount(account: InsertBusinessAccount): Promise<BusinessAccount>;
+  updateBusinessAccount(businessId: number, account: Partial<InsertBusinessAccount>): Promise<BusinessAccount>;
   
   // Database initialization
   initializeDatabase(): Promise<void>;
@@ -57,14 +75,29 @@ export class DatabaseStorage implements IStorage {
     return business || undefined;
   }
 
-  async getAllBusinesses(page = 1, limit = 10): Promise<{ businesses: Business[], total: number }> {
+  async getAllBusinesses(page = 1, limit = 10, sortBy = 'createdAt', sortOrder = 'asc'): Promise<{ businesses: Business[], total: number }> {
     const offset = (page - 1) * limit;
+    
+    // Xác định cột sắp xếp
+    let orderByColumn;
+    switch (sortBy) {
+      case 'name':
+        orderByColumn = businesses.name;
+        break;
+      case 'taxId':
+        orderByColumn = businesses.taxId;
+        break;
+      case 'createdAt':
+      default:
+        orderByColumn = businesses.createdAt;
+        break;
+    }
     
     const [businessList, totalResult] = await Promise.all([
       db
         .select()
         .from(businesses)
-        .orderBy(desc(businesses.createdAt))
+        .orderBy(sortOrder === 'desc' ? sql`${orderByColumn} DESC` : orderByColumn)
         .limit(limit)
         .offset(offset),
       db
@@ -171,16 +204,9 @@ export class DatabaseStorage implements IStorage {
 
   // Document transaction operations
   async createDocumentTransaction(transaction: InsertDocumentTransaction): Promise<DocumentTransaction> {
-    const transactionData = {
-      ...transaction,
-      transactionDate: transaction.transactionDate 
-        ? new Date(transaction.transactionDate) 
-        : new Date()
-    };
-    
     const [createdTransaction] = await db
       .insert(documentTransactions)
-      .values(transactionData)
+      .values(transaction)
       .returning();
     return createdTransaction;
   }
@@ -190,7 +216,56 @@ export class DatabaseStorage implements IStorage {
       .select()
       .from(documentTransactions)
       .where(eq(documentTransactions.businessId, businessId))
-      .orderBy(desc(documentTransactions.transactionDate));
+      .orderBy(documentTransactions.createdAt);
+  }
+
+  async getAllDocumentTransactions(): Promise<DocumentTransaction[]> {
+    return await db
+      .select()
+      .from(documentTransactions)
+      .orderBy(documentTransactions.createdAt);
+  }
+
+  async getDocumentTransactionsByCompany(companyName: string): Promise<DocumentTransaction[]> {
+    return await db
+      .select()
+      .from(documentTransactions)
+      .where(
+        sql`${documentTransactions.deliveryCompany} = ${companyName} OR ${documentTransactions.receivingCompany} = ${companyName}`
+      )
+      .orderBy(documentTransactions.createdAt);
+  }
+
+  async updateDocumentNumber(id: number, documentNumber: string): Promise<boolean> {
+    try {
+      const result = await db
+        .update(documentTransactions)
+        .set({ documentNumber })
+        .where(eq(documentTransactions.id, id))
+        .returning();
+      return result.length > 0;
+    } catch (error) {
+      console.error("Error updating document number:", error);
+      return false;
+    }
+  }
+
+  async updateSignedFilePath(id: number, signedFilePath: string): Promise<boolean> {
+    try {
+      const result = await db
+        .update(documentTransactions)
+        .set({ signedFilePath })
+        .where(eq(documentTransactions.id, id))
+        .returning();
+      return result.length > 0;
+    } catch (error) {
+      console.error("Error updating signed file path:", error);
+      return false;
+    }
+  }
+
+  async getAllBusinessesForAutocomplete(): Promise<Business[]> {
+    return await db.select().from(businesses).orderBy(businesses.name);
   }
 
   async deleteDocumentTransaction(id: number): Promise<boolean> {
@@ -198,6 +273,43 @@ export class DatabaseStorage implements IStorage {
       .delete(documentTransactions)
       .where(eq(documentTransactions.id, id));
     return (result.rowCount ?? 0) > 0;
+  }
+
+  async updateDocumentTransactionSignedFile(id: number, signedFilePath: string): Promise<boolean> {
+    try {
+      const result = await db
+        .update(documentTransactions)
+        .set({ signedFilePath })
+        .where(eq(documentTransactions.id, id))
+        .returning();
+      return result.length > 0;
+    } catch (error) {
+      console.error("Error updating document transaction signed file:", error);
+      return false;
+    }
+  }
+
+
+
+  async getDocumentTransactionsByTaxId(taxId: string): Promise<DocumentTransaction[]> {
+    // Lấy business có mã số thuế này
+    const [business] = await db
+      .select()
+      .from(businesses)
+      .where(eq(businesses.taxId, taxId));
+    
+    if (!business) {
+      return [];
+    }
+
+    // Lấy tất cả giao dịch có liên quan đến công ty này (deliveryCompany hoặc receivingCompany)
+    return await db
+      .select()
+      .from(documentTransactions)
+      .where(
+        sql`${documentTransactions.deliveryCompany} = ${business.name} OR ${documentTransactions.receivingCompany} = ${business.name}`
+      )
+      .orderBy(documentTransactions.createdAt);
   }
 
   // Admin operations
@@ -280,6 +392,7 @@ export class DatabaseStorage implements IStorage {
           bank_name VARCHAR(255),
           custom_fields JSONB DEFAULT '{}',
           notes TEXT,
+          access_code VARCHAR(255),
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
       `);
@@ -294,6 +407,7 @@ export class DatabaseStorage implements IStorage {
           handled_by VARCHAR(255) NOT NULL,
           transaction_date TIMESTAMP NOT NULL,
           notes TEXT,
+          signed_file_path VARCHAR(500),
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
       `);
@@ -317,6 +431,104 @@ export class DatabaseStorage implements IStorage {
     }
     
     console.log("Database initialization completed");
+  }
+
+  // New authentication methods
+  async authenticateUser(login: UserLoginRequest): Promise<{ userType: string; userData: any } | null> {
+    const { userType, identifier, password } = login;
+
+    switch (userType) {
+      case "admin":
+        const admin = await this.authenticateAdmin({ username: identifier, password });
+        if (admin) {
+          return { userType: "admin", userData: admin };
+        }
+        break;
+
+      case "employee":
+        // Employee authentication với mật khẩu cố định
+        if (password === "royalvietnam") {
+          return { 
+            userType: "employee", 
+            userData: { 
+              id: 0, 
+              username: identifier, 
+              role: "employee" 
+            } 
+          };
+        }
+        break;
+    }
+
+    return null;
+  }
+
+  async getBusinessByTaxId(taxId: string): Promise<Business | undefined> {
+    const [business] = await db
+      .select()
+      .from(businesses)
+      .where(eq(businesses.taxId, taxId));
+    return business || undefined;
+  }
+
+  async updateBusinessAccessCode(id: number, accessCode: string): Promise<boolean> {
+    try {
+      const result = await db
+        .update(businesses)
+        .set({ accessCode })
+        .where(eq(businesses.id, id));
+      return true;
+    } catch (error) {
+      console.error("Error updating business access code:", error);
+      return false;
+    }
+  }
+
+  // Business Account methods implementation
+  async getBusinessAccount(businessId: number): Promise<BusinessAccount | null> {
+    try {
+      const [account] = await db
+        .select()
+        .from(businessAccounts)
+        .where(eq(businessAccounts.businessId, businessId));
+      return account || null;
+    } catch (error) {
+      console.error("Error fetching business account:", error);
+      return null;
+    }
+  }
+
+  async createBusinessAccount(account: InsertBusinessAccount): Promise<BusinessAccount> {
+    const [createdAccount] = await db
+      .insert(businessAccounts)
+      .values(account)
+      .returning();
+    return createdAccount;
+  }
+
+  async updateBusinessAccount(businessId: number, account: Partial<InsertBusinessAccount>): Promise<BusinessAccount> {
+    const [updatedAccount] = await db
+      .update(businessAccounts)
+      .set(account)
+      .where(eq(businessAccounts.businessId, businessId))
+      .returning();
+    
+    if (!updatedAccount) {
+      // If no record exists, create one
+      return this.createBusinessAccount({ ...account, businessId } as InsertBusinessAccount);
+    }
+    
+    return updatedAccount;
+  }
+
+  async updateDocumentTransactionPdf(id: number, signedFilePath: string): Promise<boolean> {
+    try {
+      await db.update(documentTransactions).set({ signedFilePath }).where(eq(documentTransactions.id, id));
+      return true;
+    } catch (error) {
+      console.error("Error updating document transaction PDF:", error);
+      return false;
+    }
   }
 }
 

@@ -20,9 +20,23 @@ interface BusinessFormProps {
 
 export default function BusinessForm({ business, onSaved, onCancel }: BusinessFormProps) {
   const { toast } = useToast();
-  const [customFields, setCustomFields] = useState<Record<string, string>>(
-    business?.customFields || {}
-  );
+  // Interface cho từng field bổ sung
+  interface CustomField {
+    id: string;
+    name: string;
+    value: string;
+  }
+
+  const [customFields, setCustomFields] = useState<CustomField[]>(() => {
+    if (business?.customFields && typeof business.customFields === 'object') {
+      return Object.entries(business.customFields).map(([name, value], index) => ({
+        id: `field_${index}`,
+        name,
+        value: value as string
+      }));
+    }
+    return [];
+  });
   
   const form = useForm<InsertBusiness>({
     resolver: zodResolver(insertBusinessSchema),
@@ -87,34 +101,42 @@ export default function BusinessForm({ business, onSaved, onCancel }: BusinessFo
   });
 
   const addCustomField = () => {
-    const fieldName = `field_${Date.now()}`;
-    setCustomFields(prev => ({ ...prev, [fieldName]: "" }));
+    const newField: CustomField = {
+      id: `field_${Date.now()}`,
+      name: '',
+      value: ''
+    };
+    setCustomFields(prev => [...prev, newField]);
   };
 
-  const removeCustomField = (fieldName: string) => {
-    setCustomFields(prev => {
-      const newFields = { ...prev };
-      delete newFields[fieldName];
-      return newFields;
-    });
+  const removeCustomField = (id: string) => {
+    setCustomFields(prev => prev.filter(field => field.id !== id));
   };
 
-  const updateCustomField = (fieldName: string, value: string) => {
-    setCustomFields(prev => ({ ...prev, [fieldName]: value }));
+  const updateCustomFieldName = (id: string, name: string) => {
+    setCustomFields(prev => prev.map(field => 
+      field.id === id ? { ...field, name } : field
+    ));
   };
 
-  const updateCustomFieldName = (oldName: string, newName: string) => {
-    if (oldName === newName) return;
-    setCustomFields(prev => {
-      const newFields = { ...prev };
-      newFields[newName] = newFields[oldName];
-      delete newFields[oldName];
-      return newFields;
-    });
+  const updateCustomFieldValue = (id: string, value: string) => {
+    setCustomFields(prev => prev.map(field => 
+      field.id === id ? { ...field, value } : field
+    ));
   };
+
+
 
   const onSubmit = (data: InsertBusiness) => {
-    const submitData = { ...data, customFields };
+    // Chuyển customFields từ array về object format
+    const customFieldsObject: Record<string, string> = {};
+    customFields.forEach(field => {
+      if (field.name.trim()) {
+        customFieldsObject[field.name.trim()] = field.value;
+      }
+    });
+
+    const submitData = { ...data, customFields: customFieldsObject };
     if (business) {
       updateMutation.mutate(submitData);
     } else {
@@ -202,11 +224,11 @@ export default function BusinessForm({ business, onSaved, onCancel }: BusinessFo
         </div>
         
         <div>
-          <Label htmlFor="contactPerson">Người Liên Hệ</Label>
+          <Label htmlFor="contactPerson">Người Đại Diện</Label>
           <Input
             id="contactPerson"
             {...form.register("contactPerson")}
-            placeholder="Nhập tên người liên hệ"
+            placeholder="Nhập tên người đại diện"
           />
         </div>
       </div>
@@ -270,21 +292,23 @@ export default function BusinessForm({ business, onSaved, onCancel }: BusinessFo
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          {Object.entries(customFields).map(([fieldName, fieldValue]) => (
-            <div key={fieldName} className="flex gap-2 items-end">
+          {customFields.map((field) => (
+            <div key={field.id} className="flex gap-2 items-end">
               <div className="flex-1">
-                <Label>Tên Mục</Label>
+                <Label htmlFor={`name-${field.id}`}>Tên Mục</Label>
                 <Input
-                  value={fieldName.startsWith('field_') ? '' : fieldName}
-                  onChange={(e) => updateCustomFieldName(fieldName, e.target.value || `field_${Date.now()}`)}
+                  id={`name-${field.id}`}
+                  value={field.name}
+                  onChange={(e) => updateCustomFieldName(field.id, e.target.value)}
                   placeholder="Nhập tên mục (ví dụ: Mã khách hàng)"
                 />
               </div>
               <div className="flex-1">
-                <Label>Nội Dung</Label>
+                <Label htmlFor={`value-${field.id}`}>Nội Dung</Label>
                 <Input
-                  value={fieldValue}
-                  onChange={(e) => updateCustomField(fieldName, e.target.value)}
+                  id={`value-${field.id}`}
+                  value={field.value}
+                  onChange={(e) => updateCustomFieldValue(field.id, e.target.value)}
                   placeholder="Nhập nội dung"
                 />
               </div>
@@ -292,14 +316,14 @@ export default function BusinessForm({ business, onSaved, onCancel }: BusinessFo
                 type="button"
                 variant="outline"
                 size="sm"
-                onClick={() => removeCustomField(fieldName)}
-                className="text-red-600 hover:text-red-700"
+                onClick={() => removeCustomField(field.id)}
+                className="text-red-600 hover:text-red-700 h-9"
               >
                 <Trash2 className="h-4 w-4" />
               </Button>
             </div>
           ))}
-          {Object.keys(customFields).length === 0 && (
+          {customFields.length === 0 && (
             <p className="text-sm text-gray-500 text-center py-4">
               Chưa có thông tin bổ sung. Nhấn "Thêm Mục" để thêm thông tin tùy chỉnh.
             </p>
