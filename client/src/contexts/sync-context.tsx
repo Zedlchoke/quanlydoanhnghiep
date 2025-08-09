@@ -50,21 +50,15 @@ export function SyncProvider({ children }: SyncProviderProps) {
         fetch('/api/documents')
       ]);
 
-      if (!businessResponse.ok) {
-        console.error('❌ Failed to fetch businesses:', businessResponse.status);
-        throw new Error('Failed to fetch businesses');
-      }
-      if (!transactionResponse.ok) {
-        console.error('❌ Failed to fetch transactions:', transactionResponse.status);
-        throw new Error('Failed to fetch transactions');
-      }
+      if (!businessResponse.ok) throw new Error('Failed to fetch businesses');
+      if (!transactionResponse.ok) throw new Error('Failed to fetch transactions');
 
       const [businessData, transactionData] = await Promise.all([
         businessResponse.json() as Promise<Business[]>,
         transactionResponse.json() as Promise<DocumentTransaction[]>
       ]);
 
-      console.log('📊 Data fetched successfully:', {
+      console.log('📊 Data fetched:', {
         businesses: businessData.length,
         transactions: transactionData.length,
         businessIds: businessData.map(b => b.id),

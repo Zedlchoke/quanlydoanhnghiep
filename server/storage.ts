@@ -1,13 +1,13 @@
-import {
-  businesses,
+import { 
+  businesses, 
   businessAccounts,
-  documentTransactions,
+  documentTransactions, 
   adminUsers,
-  type Business,
+  type Business, 
   type BusinessAccount,
-  type InsertBusiness,
+  type InsertBusiness, 
   type InsertBusinessAccount,
-  type UpdateBusiness,
+  type UpdateBusiness, 
   type UpdateBusinessAccount,
   type SearchBusiness,
   type DocumentTransaction,
@@ -29,84 +29,42 @@ export interface IStorage {
   updateBusiness(business: UpdateBusiness): Promise<Business | undefined>;
   deleteBusiness(id: number): Promise<boolean>;
   searchBusinesses(search: SearchBusiness): Promise<Business[]>;
+  
 
-
-
+  
   // Document transaction operations
   createDocumentTransaction(transaction: InsertDocumentTransaction): Promise<DocumentTransaction>;
   getDocumentTransactionsByBusinessId(businessId: number): Promise<DocumentTransaction[]>;
   deleteDocumentTransaction(id: number): Promise<boolean>;
   updateDocumentTransactionSignedFile(id: number, signedFilePath: string): Promise<boolean>;
-  updateDocumentTransactionPdf(id: number, pdfPath: string): Promise<boolean>;
-
+  
   // Admin operations
   createAdminUser(user: InsertAdminUser): Promise<AdminUser>;
   authenticateAdmin(login: LoginRequest): Promise<AdminUser | null>;
   changeAdminPassword(username: string, request: ChangePasswordRequest): Promise<boolean>;
   getAdminByUsername(username: string): Promise<AdminUser | undefined>;
-
+  
   // New authentication system
   authenticateUser(login: UserLoginRequest): Promise<{ userType: string; userData: any } | null>;
   getBusinessByTaxId(taxId: string): Promise<Business | undefined>;
   updateBusinessAccessCode(id: number, accessCode: string): Promise<boolean>;
-
+  
   // Business Account methods
   getBusinessAccount(businessId: number): Promise<BusinessAccount | null>;
   createBusinessAccount(account: InsertBusinessAccount): Promise<BusinessAccount>;
   updateBusinessAccount(businessId: number, account: Partial<InsertBusinessAccount>): Promise<BusinessAccount>;
-
+  
   // Database initialization
   initializeDatabase(): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
-  async createBusiness(data: InsertBusiness & { accountData?: any }): Promise<Business> {
-    try {
-      console.log("Creating business in database with data:", data);
-
-      // Parse customFields if it's a string
-      let customFields = {};
-      if (typeof data.customFields === 'string') {
-        try {
-          customFields = JSON.parse(data.customFields);
-        } catch {
-          customFields = {};
-        }
-      } else {
-        customFields = data.customFields || {};
-      }
-
-      // Extract account data before creating business
-      const { accountData, ...businessData } = data;
-
-      const result = await db.insert(businesses).values({
-        ...businessData,
-        customFields: JSON.stringify(customFields),
-      }).returning();
-
-      const newBusiness = result[0];
-      console.log("Business created successfully:", newBusiness);
-
-      // Create business account if provided
-      if (accountData && Object.values(accountData).some(val => val && val !== '')) {
-        console.log("Creating business account for business ID:", newBusiness.id);
-        try {
-          await this.createBusinessAccount({
-            ...accountData,
-            businessId: newBusiness.id
-          });
-          console.log("Business account created successfully");
-        } catch (error) {
-          console.error("Error creating business account:", error);
-          // Continue without failing business creation
-        }
-      }
-
-      return newBusiness;
-    } catch (error) {
-      console.error("Error creating business:", error);
-      throw error;
-    }
+  async createBusiness(business: InsertBusiness): Promise<Business> {
+    const [createdBusiness] = await db
+      .insert(businesses)
+      .values(business)
+      .returning();
+    return createdBusiness;
   }
 
   async getBusinessById(id: number): Promise<Business | undefined> {
@@ -119,7 +77,7 @@ export class DatabaseStorage implements IStorage {
 
   async getAllBusinesses(page = 1, limit = 10, sortBy = 'createdAt', sortOrder = 'asc'): Promise<{ businesses: Business[], total: number }> {
     const offset = (page - 1) * limit;
-
+    
     // Xác định cột sắp xếp
     let orderByColumn;
     switch (sortBy) {
@@ -134,7 +92,7 @@ export class DatabaseStorage implements IStorage {
         orderByColumn = businesses.createdAt;
         break;
     }
-
+    
     const [businessList, totalResult] = await Promise.all([
       db
         .select()
@@ -172,7 +130,7 @@ export class DatabaseStorage implements IStorage {
 
   async searchBusinesses(search: SearchBusiness): Promise<Business[]> {
     const { field, value } = search;
-
+    
     switch (field) {
       case "address":
         return await db
@@ -339,7 +297,7 @@ export class DatabaseStorage implements IStorage {
       .select()
       .from(businesses)
       .where(eq(businesses.taxId, taxId));
-
+    
     if (!business) {
       return [];
     }
@@ -368,7 +326,7 @@ export class DatabaseStorage implements IStorage {
       .select()
       .from(adminUsers)
       .where(eq(adminUsers.username, login.username));
-
+    
     if (user && user.password === login.password) {
       return user;
     }
@@ -380,7 +338,7 @@ export class DatabaseStorage implements IStorage {
       .select()
       .from(adminUsers)
       .where(eq(adminUsers.username, username));
-
+    
     if (!user || user.password !== request.currentPassword) {
       return false;
     }
@@ -389,7 +347,7 @@ export class DatabaseStorage implements IStorage {
       .update(adminUsers)
       .set({ password: request.newPassword })
       .where(eq(adminUsers.username, username));
-
+    
     return (result.rowCount ?? 0) > 0;
   }
 
@@ -402,11 +360,66 @@ export class DatabaseStorage implements IStorage {
   }
 
   async initializeDatabase(): Promise<void> {
+    // First, try to create tables if they don't exist using raw SQL
     try {
-      // For SQLite, tables are created automatically by Drizzle
-      console.log("Database tables initialized with SQLite");
+      const client = await pool.connect();
+      
+      // Create admin_users table
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS admin_users (
+          id SERIAL PRIMARY KEY,
+          username VARCHAR(255) UNIQUE NOT NULL,
+          password VARCHAR(255) NOT NULL,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
 
-      // Create admin user if not exists  
+      // Create businesses table  
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS businesses (
+          id SERIAL PRIMARY KEY,
+          name VARCHAR(255) NOT NULL,
+          tax_id VARCHAR(100) UNIQUE,
+          address TEXT,
+          phone VARCHAR(50),
+          email VARCHAR(255),
+          website VARCHAR(255),
+          industry VARCHAR(255),
+          contact_person VARCHAR(255),
+          account VARCHAR(255),
+          password VARCHAR(255),
+          bank_account VARCHAR(255),
+          bank_name VARCHAR(255),
+          custom_fields JSONB DEFAULT '{}',
+          notes TEXT,
+          access_code VARCHAR(255),
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+
+      // Create document_transactions table
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS document_transactions (
+          id SERIAL PRIMARY KEY,
+          business_id INTEGER NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+          document_type VARCHAR(255) NOT NULL,
+          transaction_type VARCHAR(50) NOT NULL,
+          handled_by VARCHAR(255) NOT NULL,
+          transaction_date TIMESTAMP NOT NULL,
+          notes TEXT,
+          signed_file_path VARCHAR(500),
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+
+      client.release();
+      console.log("Database tables created successfully");
+    } catch (error) {
+      console.error("Error creating tables:", error);
+    }
+
+    // Create admin user if not exists  
+    try {
       await this.createAdminUser({
         username: "quanadmin",
         password: "01020811"
@@ -416,7 +429,7 @@ export class DatabaseStorage implements IStorage {
       // Admin user might already exist, that's okay
       console.log("Admin user already exists or creation failed:", error);
     }
-
+    
     console.log("Database initialization completed");
   }
 
@@ -435,13 +448,13 @@ export class DatabaseStorage implements IStorage {
       case "employee":
         // Employee authentication với mật khẩu cố định
         if (password === "royalvietnam") {
-          return {
-            userType: "employee",
-            userData: {
-              id: 0,
-              username: identifier,
-              role: "employee"
-            }
+          return { 
+            userType: "employee", 
+            userData: { 
+              id: 0, 
+              username: identifier, 
+              role: "employee" 
+            } 
           };
         }
         break;
@@ -473,7 +486,16 @@ export class DatabaseStorage implements IStorage {
 
   // Business Account methods implementation
   async getBusinessAccount(businessId: number): Promise<BusinessAccount | null> {
-    return this.getBusinessAccountByBusinessId(businessId);
+    try {
+      const [account] = await db
+        .select()
+        .from(businessAccounts)
+        .where(eq(businessAccounts.businessId, businessId));
+      return account || null;
+    } catch (error) {
+      console.error("Error fetching business account:", error);
+      return null;
+    }
   }
 
   async createBusinessAccount(account: InsertBusinessAccount): Promise<BusinessAccount> {
@@ -490,56 +512,22 @@ export class DatabaseStorage implements IStorage {
       .set(account)
       .where(eq(businessAccounts.businessId, businessId))
       .returning();
-
+    
     if (!updatedAccount) {
       // If no record exists, create one
       return this.createBusinessAccount({ ...account, businessId } as InsertBusinessAccount);
     }
-
+    
     return updatedAccount;
   }
 
-  async updateDocumentTransactionPdf(id: number, pdfPath: string): Promise<boolean> {
+  async updateDocumentTransactionPdf(id: number, signedFilePath: string): Promise<boolean> {
     try {
-      console.log(`Updating document ${id} with PDF path:`, pdfPath);
-
-      // Ensure the path is properly formatted
-      let formattedPath = pdfPath;
-      if (pdfPath.startsWith('http')) {
-        // Extract path from full URL
-        const url = new URL(pdfPath);
-        formattedPath = url.pathname;
-      }
-
-      // Ensure path starts with /documents/
-      if (!formattedPath.startsWith('/documents/')) {
-        formattedPath = `/documents/${formattedPath.replace(/^\/+/, '')}`;
-      }
-
-      const result = await db.update(documentTransactions)
-        .set({ signedFilePath: formattedPath })
-        .where(eq(documentTransactions.id, id))
-        .returning();
-
-      console.log(`PDF path updated for document ${id}:`, formattedPath);
-      console.log(`Updated transaction:`, result[0]);
-      return result.length > 0;
+      await db.update(documentTransactions).set({ signedFilePath }).where(eq(documentTransactions.id, id));
+      return true;
     } catch (error) {
       console.error("Error updating document transaction PDF:", error);
       return false;
-    }
-  }
-
-  async getBusinessAccountByBusinessId(businessId: number): Promise<BusinessAccount | null> {
-    try {
-      const result = await db.select().from(businessAccounts)
-        .where(eq(businessAccounts.businessId, businessId))
-        .limit(1);
-
-      return result[0] || null;
-    } catch (error) {
-      console.error("Error fetching business account:", error);
-      return null;
     }
   }
 }

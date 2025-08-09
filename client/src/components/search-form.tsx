@@ -32,7 +32,7 @@ const searchFieldOptions = [
 
 export default function SearchForm({ onResults, onCancel }: SearchFormProps) {
   const { toast } = useToast();
-
+  
   const form = useForm<SearchBusiness>({
     resolver: zodResolver(searchBusinessSchema),
     defaultValues: {
@@ -43,10 +43,7 @@ export default function SearchForm({ onResults, onCancel }: SearchFormProps) {
 
   const searchMutation = useMutation({
     mutationFn: async (data: SearchBusiness) => {
-      const searchCriteria = {
-        businessType: data.businessType === "all" ? undefined : data.businessType || undefined,
-      };
-      const response = await apiRequest("POST", "/api/businesses/search", { ...data, ...searchCriteria });
+      const response = await apiRequest("POST", "/api/businesses/search", data);
       return response.json();
     },
     onSuccess: (results: Business[]) => {
@@ -88,9 +85,6 @@ export default function SearchForm({ onResults, onCancel }: SearchFormProps) {
             <SelectValue placeholder="Chọn loại tìm kiếm" />
           </SelectTrigger>
           <SelectContent>
-            {/* The original code did not have any SelectItem with value="" for this select.
-                The changes provided were for a different Select component not present in the original code.
-                Therefore, no changes are made here. */}
             {searchFieldOptions.map((option) => (
               <SelectItem key={option.value} value={option.value}>
                 {option.label}

@@ -84,53 +84,16 @@ export function MultiDocumentTransactionForm({ business, onSuccess }: MultiDocum
   });
 
   const createMutation = useMutation({
-    mutationFn: async (formData: any) => {
-      const businessId = business.id;
-      const selectedDocuments = selectedDocumentTypes.map(type => ({
-        name: type,
-        count: documentCounts[type] || 1,
-        notes: "", // Placeholder for specific document notes if needed later
-      }));
-
-      // Optimize to create single transaction for multiple documents
-      console.log(`🚀 Creating 1 combined transaction for business ID: ${businessId} with ${selectedDocuments.length} document types`);
-
-      // Combine all documents into one transaction
-      const combinedDocumentType = selectedDocuments.map(doc => doc.name).join(" + ");
-      const documentTypes = selectedDocuments.map(doc => doc.name);
-      const documentCounts = selectedDocuments.reduce((acc, doc) => {
-        acc[doc.name] = doc.count || 1;
-        return acc;
-      }, {} as Record<string, number>);
-
-      const combinedTransaction = {
-        businessId,
-        documentNumber: formData.documentNumber || "",
-        documentType: combinedDocumentType,
-        documentTypes: JSON.stringify(documentTypes),
-        documentCounts: JSON.stringify(documentCounts),
-        deliveryCompany: formData.deliveryCompany,
-        receivingCompany: formData.receivingCompany,
-        deliveryPerson: formData.deliveryPerson || "",
-        receivingPerson: formData.receivingPerson || "",
-        deliveryDate: formData.deliveryDate,
-        handledBy: formData.handledBy,
-        notes: `Giao dịch tổng hợp: ${selectedDocuments.map(doc => `${doc.name} (${doc.count || 1})`).join(", ")}`,
-        status: "pending"
-      };
-
-      console.log(`🚀 Creating combined transaction for business ${businessId}:`, combinedTransaction);
-      const response = await apiRequest("POST", `/api/businesses/${businessId}/documents`, combinedTransaction);
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Lỗi khi tạo giao dịch tổng hợp: ${errorText}`);
-      }
-
-      const createdTransaction = await response.json();
-      console.log(`✅ Created combined transaction ${createdTransaction.id}`);
-      return [createdTransaction];
-    },
+    mutationFn: (data: any) =>
+      apiRequest(`/api/businesses/${business.id}/documents`, {
+        method: "POST",
+        body: JSON.stringify({
+          ...data,
+          documentTypes: selectedDocumentTypes,
+          documentCounts,
+          signedFilePath: uploadedPDFs[0] || "",
+        }),
+      }),
     onSuccess: () => {
       toast({ title: "Thành công", description: "Tạo giao dịch hồ sơ thành công" });
       form.reset();
@@ -320,7 +283,7 @@ export function MultiDocumentTransactionForm({ business, onSuccess }: MultiDocum
                 <span>Upload PDF</span>
               </div>
             </ObjectUploader>
-
+            
             {uploadedPDFs.length > 0 && (
               <div className="space-y-2">
                 <Label className="text-sm text-green-600">File đã upload:</Label>

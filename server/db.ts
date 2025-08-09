@@ -1,19 +1,15 @@
-import 'dotenv/config';
-import Database from 'better-sqlite3';
-import { drizzle } from 'drizzle-orm/better-sqlite3';
+import { Pool } from 'pg';
+import { drizzle } from 'drizzle-orm/node-postgres';
 import * as schema from "@shared/schema";
 
-// Use SQLite for development in WebContainer
-const sqlite = new Database('business_data.db');
-export const db = drizzle(sqlite, { schema });
+if (!process.env.DATABASE_URL) {
+  throw new Error(
+    "DATABASE_URL must be set. Did you forget to provision a database?",
+  );
+}
 
-// Create a mock pool object for compatibility
-export const pool = {
-  connect: async () => ({
-    query: async (sql: string, params?: any[]) => {
-      // Convert PostgreSQL queries to SQLite format for basic operations
-      return { rows: [] };
-    },
-    release: () => {}
-  })
-};
+export const pool = new Pool({ 
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
+});
+export const db = drizzle(pool, { schema });

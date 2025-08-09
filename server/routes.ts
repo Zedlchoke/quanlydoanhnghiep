@@ -109,7 +109,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const limit = parseInt(req.query.limit as string) || 10;
       const sortBy = req.query.sortBy as string || 'createdAt'; // createdAt, name, taxId
       const sortOrder = req.query.sortOrder as string || 'asc'; // asc, desc
-
+      
       const result = await storage.getAllBusinesses(page, limit, sortBy, sortOrder);
       res.json(result);
     } catch (error) {
@@ -152,100 +152,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Create new business
   app.post("/api/businesses", async (req, res) => {
     try {
-      console.log("Creating business with request body:", req.body);
-
-      // Clean up the request body and ensure proper data types
-      const cleanedData = {
-        name: req.body.name || "",
-        taxId: req.body.taxId || "",
-        address: req.body.address || "",
-        phone: req.body.phone || "",
-        email: req.body.email || "",
-        website: req.body.website || "",
-        industry: req.body.industry || "",
-        contactPerson: req.body.contactPerson || "",
-        establishmentDate: req.body.establishmentDate || "",
-        charterCapital: req.body.charterCapital || "",
-        auditWebsite: req.body.auditWebsite || "",
-        account: req.body.account || "",
-        password: req.body.password || "",
-        bankAccount: req.body.bankAccount || "",
-        bankName: req.body.bankName || "",
-        notes: req.body.notes || "",
-        customFields: typeof req.body.customFields === 'string' ? 
-          req.body.customFields : 
-          JSON.stringify(req.body.customFields || {})
-      };
-
-      console.log("Cleaned data for validation:", cleanedData);
-
-      const validatedData = insertBusinessSchema.parse(cleanedData);
-      console.log("Validation successful:", validatedData);
-
-      const newBusiness = await storage.createBusiness(validatedData);
-      console.log("Business created in database:", newBusiness);
-
-      // Extract account data from the request body with correct field names
-      const accountData = {
-        businessId: newBusiness.id,
-        invoiceLookupId: req.body.invoiceLookupId || "",
-        invoiceLookupPass: req.body.invoiceLookupPass || "",
-        webInvoiceWebsite: req.body.webInvoiceWebsite || "",
-        webInvoiceId: req.body.webInvoiceId || "",
-        webInvoicePass: req.body.webInvoicePass || "",
-        socialInsuranceCode: req.body.socialInsuranceCode || "",
-        socialInsuranceId: req.body.socialInsuranceId || "",
-        socialInsuranceMainPass: req.body.socialInsuranceMainPass || "",
-        socialInsuranceSecondaryPass: req.body.socialInsuranceSecondaryPass || "",
-        socialInsuranceContact: req.body.socialInsuranceContact || "",
-        statisticsId: req.body.statisticsId || "",
-        statisticsPass: req.body.statisticsPass || "",
-        tokenId: req.body.tokenId || "",
-        tokenPass: req.body.tokenPass || "",
-        tokenProvider: req.body.tokenProvider || "",
-        tokenRegistrationDate: req.body.tokenRegistrationDate || "",
-        tokenExpirationDate: req.body.tokenExpirationDate || "",
-        taxAccountId: req.body.taxAccountId || "",
-        taxAccountPass: req.body.taxAccountPass || "",
-      };
-
-      // Create business account if we have any account data
-      const hasAccountData = Object.values(accountData).some(val => val && val !== "");
-      if (hasAccountData) {
-        console.log("Creating business account for business ID:", newBusiness.id);
-        console.log("Account data:", accountData);
-        try {
-          const account = await storage.createBusinessAccount(accountData);
-          console.log("Business account created successfully:", account.id);
-        } catch (error) {
-          console.error("Failed to create business account:", error);
-        }
-      }
-
-      res.status(201).json(newBusiness);
+      const validatedData = insertBusinessSchema.parse(req.body);
+      const business = await storage.createBusiness(validatedData);
+      res.status(201).json(business);
     } catch (error) {
-      console.error("Full error creating business:", error);
-
       if (error instanceof z.ZodError) {
-        console.error("Zod validation errors:", error.errors);
         return res.status(400).json({ 
-          message: "Dữ liệu không hợp lệ: " + error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', '),
-          errors: error.errors,
-          receivedData: req.body
+          message: "Dữ liệu không hợp lệ",
+          errors: error.errors 
         });
       }
-
-      if (error instanceof Error && (error.message.includes("duplicate key") || error.message.includes("UNIQUE constraint failed"))) {
-        console.error("Duplicate tax ID error:", error.message);
-        return res.status(400).json({ message: "Mã số thuế đã tồn tại trong hệ thống" });
+      
+      if (error instanceof Error && error.message.includes("duplicate key")) {
+        return res.status(400).json({ message: "Mã số thuế đã tồn tại" });
       }
-
-      console.error("Unexpected error creating business:", error);
-      res.status(500).json({ 
-        message: "Lỗi server khi tạo doanh nghiệp mới", 
-        error: error instanceof Error ? error.message : String(error),
-        stack: error instanceof Error ? error.stack : undefined
-      });
+      
+      console.error("Error creating business:", error);
+      res.status(500).json({ message: "Lỗi khi tạo doanh nghiệp mới" });
     }
   });
 
@@ -259,7 +182,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const validatedData = updateBusinessSchema.parse({ ...req.body, id });
       const business = await storage.updateBusiness(validatedData);
-
+      
       if (!business) {
         return res.status(404).json({ message: "Không tìm thấy doanh nghiệp" });
       }
@@ -272,7 +195,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           errors: error.errors 
         });
       }
-
+      
       console.error("Error updating business:", error);
       res.status(500).json({ message: "Lỗi khi cập nhật doanh nghiệp" });
     }
@@ -291,7 +214,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           errors: error.errors 
         });
       }
-
+      
       console.error("Error searching businesses:", error);
       res.status(500).json({ message: "Lỗi khi tìm kiếm doanh nghiệp" });
     }
@@ -306,7 +229,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const validatedData = deleteBusinessSchema.parse({ ...req.body, id });
-
+      
       if (validatedData.password !== DELETE_PASSWORD) {
         return res.status(403).json({ message: "Mật khẩu không đúng" });
       }
@@ -324,7 +247,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           errors: error.errors 
         });
       }
-
+      
       console.error("Error deleting business:", error);
       res.status(500).json({ message: "Lỗi khi xóa doanh nghiệp" });
     }
@@ -332,7 +255,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Simple token storage for authentication - updated for new system
   const authTokens = new Map<string, { userType: string; userData: any }>();
-
+  
   function generateToken(): string {
     return Math.random().toString(36).substring(2) + Date.now().toString(36);
   }
@@ -342,7 +265,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const validatedData = userLoginSchema.parse(req.body);
       const authResult = await storage.authenticateUser(validatedData);
-
+      
       if (!authResult) {
         return res.status(401).json({ message: "Thông tin đăng nhập không đúng" });
       }
@@ -365,7 +288,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           errors: error.errors 
         });
       }
-
+      
       console.error("Error during login:", error);
       res.status(500).json({ message: "Lỗi khi đăng nhập" });
     }
@@ -376,7 +299,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const validatedData = loginSchema.parse(req.body);
       const admin = await storage.authenticateAdmin(validatedData);
-
+      
       if (!admin) {
         return res.status(401).json({ message: "Tài khoản hoặc mật khẩu không đúng" });
       }
@@ -396,7 +319,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           errors: error.errors 
         });
       }
-
+      
       console.error("Error during admin login:", error);
       res.status(500).json({ message: "Lỗi khi đăng nhập admin" });
     }
@@ -413,7 +336,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/auth/me", async (req, res) => {
     const token = req.headers.authorization?.replace('Bearer ', '');
     const authData = token ? authTokens.get(token) : null;
-
+    
     if (authData) {
       res.json({ 
         isAuthenticated: true, 
@@ -431,14 +354,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const token = req.headers.authorization?.replace('Bearer ', '');
       const authData = token ? authTokens.get(token) : null;
-
+      
       if (!authData || authData.userType !== "admin") {
         return res.status(401).json({ message: "Chưa đăng nhập hoặc không có quyền" });
       }
 
       const validatedData = changePasswordSchema.parse(req.body);
       const success = await storage.changeAdminPassword(authData.userData.username, validatedData);
-
+      
       if (!success) {
         return res.status(400).json({ message: "Mật khẩu hiện tại không đúng" });
       }
@@ -451,7 +374,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           errors: error.errors 
         });
       }
-
+      
       console.error("Error changing password:", error);
       res.status(500).json({ message: "Lỗi khi đổi mật khẩu" });
     }
@@ -462,7 +385,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const token = req.headers.authorization?.replace('Bearer ', '');
       const authData = token ? authTokens.get(token) : null;
-
+      
       if (!authData || authData.userType !== "admin") {
         return res.status(401).json({ message: "Chỉ admin mới có quyền thay đổi mã truy cập" });
       }
@@ -592,7 +515,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ...req.body, 
         businessId 
       });
-
+      
       console.log(`Creating document transaction for business ID: ${businessId}`, { businessId, documents: validatedData.documents, deliveryCompany: validatedData.deliveryCompany });
       const transaction = await storage.createDocumentTransaction(validatedData);
       console.log(`Created transaction with ID: ${transaction.id} for business ${businessId}`);
@@ -604,7 +527,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           errors: error.errors 
         });
       }
-
+      
       console.error("Error creating document transaction:", error);
       res.status(500).json({ message: "Lỗi khi tạo giao dịch hồ sơ" });
     }
@@ -692,7 +615,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           errors: error.errors 
         });
       }
-
+      
       console.error("Error deleting document transaction:", error);
       res.status(500).json({ message: "Lỗi khi xóa giao dịch hồ sơ" });
     }
@@ -720,7 +643,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           errors: error.errors 
         });
       }
-
+      
       console.error("Error creating business account:", error);
       res.status(500).json({ message: "Lỗi khi tạo tài khoản doanh nghiệp" });
     }
@@ -750,7 +673,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const validatedData = updateBusinessAccountSchema.parse(req.body);
       const account = await storage.updateBusinessAccount(businessId, validatedData);
-
+      
       if (!account) {
         return res.status(404).json({ message: "Không tìm thấy tài khoản" });
       }
@@ -763,7 +686,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           errors: error.errors 
         });
       }
-
+      
       console.error("Error updating business account:", error);
       res.status(500).json({ message: "Lỗi khi cập nhật tài khoản" });
     }
@@ -784,9 +707,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/documents/:documentPath(*)", async (req, res) => {
     const objectStorageService = new ObjectStorageService();
     try {
-      const fullPath = `/documents/${req.params.documentPath}`;
-      console.log('📥 Attempting to download PDF from path:', fullPath);
-      const pdfFile = await objectStorageService.getPDFFile(fullPath);
+      const pdfFile = await objectStorageService.getPDFFile(req.path);
       objectStorageService.downloadObject(pdfFile, res);
     } catch (error) {
       console.error("Error accessing PDF document:", error);
@@ -809,24 +730,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Handle PDF file uploads
-  app.post("/api/upload-pdf", async (req, res) => {
-    try {
-      // Simple file handling - in production you'd want proper multipart handling
-      const fileId = Date.now().toString();
-      const filePath = `/documents/pdf_${fileId}.pdf`;
-      
-      res.json({ 
-        success: true, 
-        path: filePath,
-        message: "File uploaded successfully" 
-      });
-    } catch (error) {
-      console.error("Error handling PDF upload:", error);
-      res.status(500).json({ error: "Failed to upload PDF" });
-    }
-  });
-
   app.get("/objects/:objectPath(*)", async (req, res) => {
     try {
       const objectStorageService = new ObjectStorageService();
@@ -846,7 +749,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const token = req.headers.authorization?.replace('Bearer ', '');
       const authData = token ? authTokens.get(token) : null;
-
+      
       if (!authData) {
         return res.status(401).json({ message: "Chưa đăng nhập" });
       }
@@ -878,7 +781,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const token = req.headers.authorization?.replace('Bearer ', '');
       const authData = token ? authTokens.get(token) : null;
-
+      
       if (!authData) {
         return res.status(401).json({ message: "Chưa đăng nhập" });
       }
@@ -889,32 +792,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const { pdfPath } = req.body;
-      if (typeof pdfPath !== 'string' || !pdfPath) {
+      if (typeof pdfPath !== 'string') {
         return res.status(400).json({ message: "Đường dẫn PDF không hợp lệ" });
       }
 
-      console.log(`Received PDF upload request for document ${id}:`, pdfPath);
+      const objectStorageService = new ObjectStorageService();
+      const normalizedPath = objectStorageService.normalizeObjectEntityPath(pdfPath);
 
-      const success = await storage.updateDocumentTransactionPdf(id, pdfPath);
+      const success = await storage.updateDocumentPdf(id, normalizedPath);
       if (!success) {
-        return res.status(404).json({ message: "Không tìm thấy giao dịch hồ sơ hoặc cập nhật thất bại" });
+        return res.status(404).json({ message: "Không tìm thấy giao dịch hồ sơ" });
       }
 
-      // Get updated transaction to return current state
-      const transactions = await storage.getDocumentTransactionsByBusinessId(0);
-      const updatedTransaction = transactions.find(t => t.id === id);
-
-      res.json({ 
-        message: "Tải lên PDF thành công", 
-        pdfPath,
-        transaction: updatedTransaction
-      });
+      res.json({ message: "Tải lên PDF thành công", pdfPath: normalizedPath });
     } catch (error) {
       console.error("Error uploading PDF:", error);
-      res.status(500).json({ 
-        message: "Lỗi khi tải lên PDF",
-        error: error instanceof Error ? error.message : String(error)
-      });
+      res.status(500).json({ message: "Lỗi khi tải lên PDF" });
     }
   });
 

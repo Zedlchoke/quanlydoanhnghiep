@@ -1,15 +1,17 @@
 import { useState, useEffect } from "react";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import * as React from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Copy, Eye, EyeOff, Save } from "lucide-react";
-import { insertBusinessAccountSchema, updateBusinessAccountSchema, type Business, type BusinessAccount, type InsertBusinessAccount, type UpdateBusinessAccount } from "@shared/schema";
+import { Eye, EyeOff, Save, Plus } from "lucide-react";
+import { apiRequest } from "@/lib/queryClient";
+import type { Business, BusinessAccount, InsertBusinessAccount } from "@shared/schema";
 
 interface BusinessAccountManagerProps {
   business: Business;
@@ -18,530 +20,312 @@ interface BusinessAccountManagerProps {
 }
 
 export function BusinessAccountManager({ business, isOpen, onClose }: BusinessAccountManagerProps) {
+  const [showPasswords, setShowPasswords] = useState<Record<string, boolean>>({});
+  const [activeTab, setActiveTab] = useState("invoice-lookup");
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const [isEditing, setIsEditing] = useState(false);
 
-  const { data: account, refetch } = useQuery<BusinessAccount | null>({
+  // Fetch business account data
+  const { data: account } = useQuery({
     queryKey: [`/api/businesses/${business.id}/accounts`],
     queryFn: async () => {
       const response = await fetch(`/api/businesses/${business.id}/accounts`);
-      if (!response.ok) {
-        if (response.status === 404) return null;
-        throw new Error("Failed to fetch account");
-      }
-      return response.json();
+      if (!response.ok) throw new Error("Failed to fetch business accounts");
+      return response.json() as BusinessAccount;
     },
-    enabled: isOpen && !!business.id,
+    enabled: isOpen,
   });
 
-  const form = useForm<InsertBusinessAccount>({
-    resolver: zodResolver(account ? updateBusinessAccountSchema : insertBusinessAccountSchema),
-    defaultValues: {
-      businessId: business.id,
-      invoiceLookupId: "",
-      invoiceLookupPass: "",
-      webInvoiceWebsite: "",
-      webInvoiceId: "",
-      webInvoicePass: "",
-      socialInsuranceCode: "",
-      socialInsuranceId: "",
-      socialInsuranceMainPass: "",
-      socialInsuranceSecondaryPass: "",
-      socialInsuranceContact: "",
-      statisticsId: "",
-      statisticsPass: "",
-      tokenId: "",
-      tokenPass: "",
-      tokenProvider: "",
-      tokenRegistrationDate: "",
-      tokenExpirationDate: "",
-      taxAccountId: "",
-      taxAccountPass: "",
-    },
-  });
+  const [formData, setFormData] = useState<Partial<InsertBusinessAccount>>({});
 
+  // Update form data when account data loads
   useEffect(() => {
     if (account) {
-      form.reset(account);
-      setIsEditing(false);
-    } else {
-      setIsEditing(true);
+      setFormData(account);
     }
-  }, [account, form]);
+  }, [account]);
 
-  const createMutation = useMutation({
-    mutationFn: async (data: InsertBusinessAccount) => {
-      const response = await fetch(`/api/businesses/${business.id}/accounts`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
+  // Save account data
+  const saveMutation = useMutation({
+    mutationFn: async (data: Partial<InsertBusinessAccount>) => {
+      return apiRequest(`/api/businesses/${business.id}/accounts`, {
+        method: account?.id ? "PUT" : "POST",
+        body: JSON.stringify({ ...data, businessId: business.id }),
       });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Failed to create account: ${errorText}`);
-      }
-
-      return response.json();
-    },
-    onSuccess: (account) => {
-      toast({
-        title: "Thành công",
-        description: "Đã tạo tài khoản doanh nghiệp thành công",
-      });
-      queryClient.invalidateQueries({ queryKey: [`/api/businesses/${business.id}/accounts`] });
-      refetch();
-      setIsEditing(false);
-    },
-  });
-
-  const updateMutation = useMutation({
-    mutationFn: async (data: UpdateBusinessAccount) => {
-      const response = await fetch(`/api/businesses/${business.id}/accounts`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      });
-      if (!response.ok) throw new Error("Failed to update account");
-      return response.json();
     },
     onSuccess: () => {
       toast({
         title: "Thành công",
-        description: "Đã cập nhật tài khoản doanh nghiệp",
+        description: "Đã lưu thông tin tài khoản",
       });
-      refetch();
       queryClient.invalidateQueries({ queryKey: [`/api/businesses/${business.id}/accounts`] });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Lỗi",
+        description: error.message || "Không thể lưu thông tin tài khoản",
+        variant: "destructive",
+      });
     },
   });
 
-  const copyToClipboard = (text: string, fieldName: string) => {
-    if (!text) {
-      toast({
-        title: "Không có dữ liệu",
-        description: `${fieldName} trống`,
-        variant: "destructive",
-      });
-      return;
-    }
-    navigator.clipboard.writeText(text);
-    toast({
-      title: "Đã sao chép",
-      description: `${fieldName} đã được sao chép vào clipboard`,
-    });
+  const handleSave = () => {
+    saveMutation.mutate(formData);
   };
 
-  const onSubmit = (data: InsertBusinessAccount) => {
-    if (account) {
-      updateMutation.mutate(data);
-    } else {
-      createMutation.mutate(data);
-    }
+  const togglePasswordVisibility = (field: string) => {
+    setShowPasswords(prev => ({
+      ...prev,
+      [field]: !prev[field]
+    }));
   };
 
-  const isLoading = createMutation.isPending || updateMutation.isPending;
+  const PasswordInput = ({ field, label, value }: { field: string; label: string; value?: string }) => (
+    <div className="space-y-2">
+      <Label>{label}</Label>
+      <div className="relative">
+        <Input
+          type={showPasswords[field] ? "text" : "password"}
+          value={value || ""}
+          onChange={(e) => setFormData(prev => ({ ...prev, [field]: e.target.value }))}
+          className="pr-10"
+        />
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+          onClick={() => togglePasswordVisibility(field)}
+        >
+          {showPasswords[field] ? (
+            <EyeOff className="h-4 w-4" />
+          ) : (
+            <Eye className="h-4 w-4" />
+          )}
+        </Button>
+      </div>
+    </div>
+  );
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="flex items-center justify-between">
-            Quản Lý Tài Khoản - {business.name}
-            {account && !isEditing && (
-              <Button
-                onClick={() => setIsEditing(true)}
-                variant="outline"
-                size="sm"
-              >
-                Chỉnh sửa
-              </Button>
-            )}
+          <DialogTitle className="flex items-center gap-2">
+            <Badge variant="outline">{business.name}</Badge>
+            Quản Lý Tài Khoản Doanh Nghiệp
           </DialogTitle>
         </DialogHeader>
 
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-          {/* Invoice Lookup Account */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Tài Khoản Tra Cứu HĐĐT</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label>ID tra cứu HĐĐT</Label>
-                  <div className="flex gap-2">
-                    <Input
-                      {...form.register("invoiceLookupId")}
-                      readOnly={!isEditing}
-                      className={!isEditing ? "bg-gray-50" : ""}
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => copyToClipboard(form.watch("invoiceLookupId") || "", "ID tra cứu HĐĐT")}
-                    >
-                      <Copy className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-                <div>
-                  <Label>Mật khẩu tra cứu HĐĐT</Label>
-                  <div className="flex gap-2">
-                    <Input
-                      type="text"
-                      {...form.register("invoiceLookupPass")}
-                      readOnly={!isEditing}
-                      className={!isEditing ? "bg-gray-50" : ""}
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => copyToClipboard(form.watch("invoiceLookupPass") || "", "Mật khẩu tra cứu HĐĐT")}
-                    >
-                      <Copy className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <TabsList className="grid w-full grid-cols-5">
+            <TabsTrigger value="invoice-lookup">Tra Cứu HĐĐT</TabsTrigger>
+            <TabsTrigger value="web-invoice">Web HĐĐT</TabsTrigger>
+            <TabsTrigger value="social-insurance">Bảo Hiểm XH-YT</TabsTrigger>
+            <TabsTrigger value="statistics">Thống Kê</TabsTrigger>
+            <TabsTrigger value="token">TOKEN</TabsTrigger>
+          </TabsList>
 
-          {/* Web Invoice Account */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Tài Khoản Web HĐĐT</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <Label>Website HĐĐT</Label>
-                <Input
-                  {...form.register("webInvoiceWebsite")}
-                  readOnly={!isEditing}
-                  className={!isEditing ? "bg-gray-50" : ""}
+          {/* Tài khoản tra cứu HĐĐT */}
+          <TabsContent value="invoice-lookup" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>Tài Khoản Tra Cứu Hóa Đơn Điện Tử</CardTitle>
+                <CardDescription>
+                  Thông tin đăng nhập để tra cứu hóa đơn điện tử
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div>
+                  <Label>ID Tài Khoản</Label>
+                  <Input
+                    value={formData.invoiceLookupId || ""}
+                    onChange={(e) => setFormData(prev => ({ ...prev, invoiceLookupId: e.target.value }))}
+                    placeholder="Nhập ID tài khoản tra cứu"
+                  />
+                </div>
+                <PasswordInput 
+                  field="invoiceLookupPass" 
+                  label="Mật khẩu" 
+                  value={formData.invoiceLookupPass}
                 />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label>ID Web HĐĐT</Label>
-                  <div className="flex gap-2">
-                    <Input
-                      {...form.register("webInvoiceId")}
-                      readOnly={!isEditing}
-                      className={!isEditing ? "bg-gray-50" : ""}
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => copyToClipboard(form.watch("webInvoiceId") || "", "ID Web HĐĐT")}
-                    >
-                      <Copy className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-                <div>
-                  <Label>Mật khẩu Web HĐĐT</Label>
-                  <div className="flex gap-2">
-                    <Input
-                      type="text"
-                      {...form.register("webInvoicePass")}
-                      readOnly={!isEditing}
-                      className={!isEditing ? "bg-gray-50" : ""}
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => copyToClipboard(form.watch("webInvoicePass") || "", "Mật khẩu Web HĐĐT")}
-                    >
-                      <Copy className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          </TabsContent>
 
-          {/* Social Insurance Account */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Tài Khoản Bảo Hiểm XH-YT</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-3 gap-4">
+          {/* Tài khoản Web HĐĐT */}
+          <TabsContent value="web-invoice" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>Tài Khoản Web Hóa Đơn Điện Tử</CardTitle>
+                <CardDescription>
+                  Thông tin đăng nhập web portal hóa đơn điện tử
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
                 <div>
-                  <Label>Mã bảo hiểm</Label>
+                  <Label>Website</Label>
                   <Input
-                    {...form.register("socialInsuranceCode")}
-                    readOnly={!isEditing}
-                    className={!isEditing ? "bg-gray-50" : ""}
+                    value={formData.webInvoiceWebsite || ""}
+                    onChange={(e) => setFormData(prev => ({ ...prev, webInvoiceWebsite: e.target.value }))}
+                    placeholder="https://website.com"
                   />
                 </div>
                 <div>
-                  <Label>ID Bảo hiểm</Label>
-                  <div className="flex gap-2">
-                    <Input
-                      {...form.register("socialInsuranceId")}
-                      readOnly={!isEditing}
-                      className={!isEditing ? "bg-gray-50" : ""}
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => copyToClipboard(form.watch("socialInsuranceId") || "", "ID Bảo hiểm")}
-                    >
-                      <Copy className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-                <div>
-                  <Label>Liên hệ</Label>
+                  <Label>ID Tài Khoản</Label>
                   <Input
-                    {...form.register("socialInsuranceContact")}
-                    readOnly={!isEditing}
-                    className={!isEditing ? "bg-gray-50" : ""}
+                    value={formData.webInvoiceId || ""}
+                    onChange={(e) => setFormData(prev => ({ ...prev, webInvoiceId: e.target.value }))}
+                    placeholder="Nhập ID tài khoản web"
                   />
                 </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label>Mật khẩu chính</Label>
-                  <div className="flex gap-2">
-                    <Input
-                      type="text"
-                      {...form.register("socialInsuranceMainPass")}
-                      readOnly={!isEditing}
-                      className={!isEditing ? "bg-gray-50" : ""}
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => copyToClipboard(form.watch("socialInsuranceMainPass") || "", "Mật khẩu chính BH")}
-                    >
-                      <Copy className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-                <div>
-                  <Label>Mật khẩu phụ</Label>
-                  <div className="flex gap-2">
-                    <Input
-                      type="text"
-                      {...form.register("socialInsuranceSecondaryPass")}
-                      readOnly={!isEditing}
-                      className={!isEditing ? "bg-gray-50" : ""}
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => copyToClipboard(form.watch("socialInsuranceSecondaryPass") || "", "Mật khẩu phụ BH")}
-                    >
-                      <Copy className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+                <PasswordInput 
+                  field="webInvoicePass" 
+                  label="Mật khẩu" 
+                  value={formData.webInvoicePass}
+                />
+              </CardContent>
+            </Card>
+          </TabsContent>
 
-          {/* Statistics Account */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Tài Khoản Thống Kê</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+          {/* Tài khoản Bảo hiểm XH-YT */}
+          <TabsContent value="social-insurance" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>Tài Khoản Bảo Hiểm Xã Hội - Y Tế</CardTitle>
+                <CardDescription>
+                  Thông tin tài khoản bảo hiểm xã hội và y tế
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
                 <div>
-                  <Label>ID thống kê</Label>
-                  <div className="flex gap-2">
-                    <Input
-                      {...form.register("statisticsId")}
-                      readOnly={!isEditing}
-                      className={!isEditing ? "bg-gray-50" : ""}
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => copyToClipboard(form.watch("statisticsId") || "", "ID thống kê")}
-                    >
-                      <Copy className="h-4 w-4" />
-                    </Button>
-                  </div>
+                  <Label>Mã Bảo Hiểm</Label>
+                  <Input
+                    value={formData.socialInsuranceCode || ""}
+                    onChange={(e) => setFormData(prev => ({ ...prev, socialInsuranceCode: e.target.value }))}
+                    placeholder="Nhập mã bảo hiểm"
+                  />
                 </div>
                 <div>
-                  <Label>Mật khẩu thống kê</Label>
-                  <div className="flex gap-2">
-                    <Input
-                      type="text"
-                      {...form.register("statisticsPass")}
-                      readOnly={!isEditing}
-                      className={!isEditing ? "bg-gray-50" : ""}
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => copyToClipboard(form.watch("statisticsPass") || "", "Mật khẩu thống kê")}
-                    >
-                      <Copy className="h-4 w-4" />
-                    </Button>
-                  </div>
+                  <Label>ID Tài Khoản</Label>
+                  <Input
+                    value={formData.socialInsuranceId || ""}
+                    onChange={(e) => setFormData(prev => ({ ...prev, socialInsuranceId: e.target.value }))}
+                    placeholder="Nhập ID tài khoản"
+                  />
                 </div>
-              </div>
-            </CardContent>
-          </Card>
+                <PasswordInput 
+                  field="socialInsuranceMainPass" 
+                  label="Mật khẩu chính" 
+                  value={formData.socialInsuranceMainPass}
+                />
+                <PasswordInput 
+                  field="socialInsuranceSecondaryPass" 
+                  label="Mật khẩu phụ" 
+                  value={formData.socialInsuranceSecondaryPass}
+                />
+                <div>
+                  <Label>Thông tin liên hệ</Label>
+                  <Input
+                    value={formData.socialInsuranceContact || ""}
+                    onChange={(e) => setFormData(prev => ({ ...prev, socialInsuranceContact: e.target.value }))}
+                    placeholder="Số điện thoại, email liên hệ"
+                  />
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
 
-          {/* Token Account */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Tài Khoản TOKEN</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+          {/* Tài khoản thống kê */}
+          <TabsContent value="statistics" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>Tài Khoản Thống Kê</CardTitle>
+                <CardDescription>
+                  Thông tin đăng nhập hệ thống thống kê
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
                 <div>
-                  <Label>ID TOKEN</Label>
-                  <div className="flex gap-2">
-                    <Input
-                      {...form.register("tokenId")}
-                      readOnly={!isEditing}
-                      className={!isEditing ? "bg-gray-50" : ""}
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => copyToClipboard(form.watch("tokenId") || "", "ID TOKEN")}
-                    >
-                      <Copy className="h-4 w-4" />
-                    </Button>
-                  </div>
+                  <Label>ID Tài Khoản</Label>
+                  <Input
+                    value={formData.statisticsId || ""}
+                    onChange={(e) => setFormData(prev => ({ ...prev, statisticsId: e.target.value }))}
+                    placeholder="Nhập ID tài khoản thống kê"
+                  />
                 </div>
+                <PasswordInput 
+                  field="statisticsPass" 
+                  label="Mật khẩu" 
+                  value={formData.statisticsPass}
+                />
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Tài khoản TOKEN */}
+          <TabsContent value="token" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>Tài Khoản TOKEN</CardTitle>
+                <CardDescription>
+                  Thông tin token và đơn vị cung cấp
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
                 <div>
-                  <Label>Mật khẩu TOKEN</Label>
-                  <div className="flex gap-2">
-                    <Input
-                      type="text"
-                      {...form.register("tokenPass")}
-                      readOnly={!isEditing}
-                      className={!isEditing ? "bg-gray-50" : ""}
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => copyToClipboard(form.watch("tokenPass") || "", "Mật khẩu TOKEN")}
-                    >
-                      <Copy className="h-4 w-4" />
-                    </Button>
-                  </div>
+                  <Label>ID Token</Label>
+                  <Input
+                    value={formData.tokenId || ""}
+                    onChange={(e) => setFormData(prev => ({ ...prev, tokenId: e.target.value }))}
+                    placeholder="Nhập ID token"
+                  />
                 </div>
-              </div>
-              <div className="grid grid-cols-3 gap-4">
+                <PasswordInput 
+                  field="tokenPass" 
+                  label="Mật khẩu Token" 
+                  value={formData.tokenPass}
+                />
                 <div>
                   <Label>Đơn vị cung cấp</Label>
                   <Input
-                    {...form.register("tokenProvider")}
-                    readOnly={!isEditing}
-                    className={!isEditing ? "bg-gray-50" : ""}
+                    value={formData.tokenProvider || ""}
+                    onChange={(e) => setFormData(prev => ({ ...prev, tokenProvider: e.target.value }))}
+                    placeholder="Tên đơn vị cung cấp token"
                   />
                 </div>
-                <div>
-                  <Label>Ngày đăng ký</Label>
-                  <Input
-                    type="date"
-                    {...form.register("tokenRegistrationDate")}
-                    readOnly={!isEditing}
-                    className={!isEditing ? "bg-gray-50" : ""}
-                  />
-                </div>
-                <div>
-                  <Label>Ngày hết hạn</Label>
-                  <Input
-                    type="date"
-                    {...form.register("tokenExpirationDate")}
-                    readOnly={!isEditing}
-                    className={!isEditing ? "bg-gray-50" : ""}
-                  />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Tax Account */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Tài Khoản Khai Thuế, Nộp Thuế</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label>ID tài khoản thuế</Label>
-                  <div className="flex gap-2">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label>Ngày đăng ký</Label>
                     <Input
-                      {...form.register("taxAccountId")}
-                      readOnly={!isEditing}
-                      className={!isEditing ? "bg-gray-50" : ""}
+                      type="date"
+                      value={formData.tokenRegistrationDate || ""}
+                      onChange={(e) => setFormData(prev => ({ ...prev, tokenRegistrationDate: e.target.value }))}
                     />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => copyToClipboard(form.watch("taxAccountId") || "", "ID tài khoản thuế")}
-                    >
-                      <Copy className="h-4 w-4" />
-                    </Button>
+                  </div>
+                  <div>
+                    <Label>Ngày hết hạn</Label>
+                    <Input
+                      type="date"
+                      value={formData.tokenExpirationDate || ""}
+                      onChange={(e) => setFormData(prev => ({ ...prev, tokenExpirationDate: e.target.value }))}
+                    />
                   </div>
                 </div>
-                <div>
-                  <Label>Mật khẩu tài khoản thuế</Label>
-                  <div className="flex gap-2">
-                    <Input
-                      type="text"
-                      {...form.register("taxAccountPass")}
-                      readOnly={!isEditing}
-                      className={!isEditing ? "bg-gray-50" : ""}
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => copyToClipboard(form.watch("taxAccountPass") || "", "Mật khẩu tài khoản thuế")}
-                    >
-                      <Copy className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
 
-          {/* Buttons */}
-          <div className="flex justify-end space-x-2 pt-4 border-t">
-            <Button type="button" variant="outline" onClick={onClose}>
-              Đóng
-            </Button>
-            {isEditing && (
-              <>
-                {account && (
-                  <Button type="button" variant="outline" onClick={() => setIsEditing(false)}>
-                    Hủy chỉnh sửa
-                  </Button>
-                )}
-                <Button type="submit" disabled={isLoading}>
-                  <Save className="w-4 h-4 mr-2" />
-                  {isLoading ? "Đang lưu..." : account ? "Cập nhật" : "Tạo mới"}
-                </Button>
-              </>
-            )}
-          </div>
-        </form>
+        <div className="flex justify-end space-x-2 pt-4">
+          <Button variant="outline" onClick={onClose}>
+            Hủy
+          </Button>
+          <Button onClick={handleSave} disabled={saveMutation.isPending}>
+            <Save className="w-4 h-4 mr-2" />
+            {saveMutation.isPending ? "Đang lưu..." : "Lưu tài khoản"}
+          </Button>
+        </div>
       </DialogContent>
     </Dialog>
   );

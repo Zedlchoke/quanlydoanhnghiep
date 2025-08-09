@@ -6,7 +6,7 @@ import { Upload, File, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 interface ObjectUploaderProps {
-  onUpload: (result: any) => void;
+  onUpload: (filePath: string) => void;
   currentFile?: string;
   disabled?: boolean;
   accept?: string;
@@ -33,11 +33,11 @@ export function ObjectUploader({ onUpload, currentFile, disabled, accept = ".pdf
       const uploadResponse = await fetch("/api/objects/upload", {
         method: "POST",
       });
-
+      
       if (!uploadResponse.ok) {
         throw new Error("Failed to get upload URL");
       }
-
+      
       const { uploadURL } = await uploadResponse.json();
 
       // Upload file to object storage
@@ -59,12 +59,7 @@ export function ObjectUploader({ onUpload, currentFile, disabled, accept = ".pdf
         ""
       );
 
-      onUpload({
-        uploadURL: uploadURL,
-        fileName: selectedFile.name,
-        fileSize: selectedFile.size,
-        response: { objectPath: objectPath }
-      });
+      onUpload(objectPath);
       setSelectedFile(null);
       toast({
         title: "Thành công",
@@ -102,7 +97,7 @@ export function ObjectUploader({ onUpload, currentFile, disabled, accept = ".pdf
           {uploading ? "Đang tải..." : "Upload"}
         </Button>
       </div>
-
+      
       {currentFile && (
         <div className="flex items-center gap-2 text-sm text-green-600">
           <File className="h-4 w-4" />
@@ -117,7 +112,7 @@ export function ObjectUploader({ onUpload, currentFile, disabled, accept = ".pdf
           </Button>
         </div>
       )}
-
+      
       {selectedFile && (
         <div className="flex items-center gap-2 text-sm text-blue-600">
           <File className="h-4 w-4" />
