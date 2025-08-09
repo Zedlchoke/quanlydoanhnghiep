@@ -1,15 +1,15 @@
 import { sql } from "drizzle-orm";
-import { sqliteTable, text, integer, blob } from "drizzle-orm/sqlite-core";
+import { pgTable, text, varchar, timestamp, serial, integer, jsonb, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { relations } from "drizzle-orm";
 
-export const businesses = sqliteTable("businesses", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
+export const businesses = pgTable("businesses", {
+  id: serial("id").primaryKey(),
   name: text("name").notNull(),
-  taxId: text("tax_id").notNull().unique(),
+  taxId: varchar("tax_id", { length: 20 }).notNull().unique(),
   address: text("address"),
-  phone: text("phone"),
+  phone: varchar("phone", { length: 20 }),
   email: text("email"),
   website: text("website"),
   industry: text("industry"),
@@ -26,15 +26,15 @@ export const businesses = sqliteTable("businesses", {
   bankAccount: text("bank_account"),
   bankName: text("bank_name"),
   
-  customFields: text("custom_fields").$type<Record<string, string>>().default("{}"),
+  customFields: jsonb("custom_fields").$type<Record<string, string>>().default({}),
   notes: text("notes"),
   accessCode: text("access_code"), // Mã truy cập riêng cho từng doanh nghiệp
-  createdAt: text("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 
 // Bảng riêng cho các tài khoản của doanh nghiệp
-export const businessAccounts = sqliteTable("business_accounts", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
+export const businessAccounts = pgTable("business_accounts", {
+  id: serial("id").primaryKey(),
   businessId: integer("business_id").notNull().references(() => businesses.id, { onDelete: "cascade" }),
   
   // Tài khoản tra cứu HĐĐT
@@ -68,18 +68,18 @@ export const businessAccounts = sqliteTable("business_accounts", {
   taxAccountId: text("tax_account_id"),
   taxAccountPass: text("tax_account_pass"),
   
-  createdAt: text("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 
-export const documentTransactions = sqliteTable("document_transactions", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
+export const documentTransactions = pgTable("document_transactions", {
+  id: serial("id").primaryKey(),
   businessId: integer("business_id").notNull().references(() => businesses.id, { onDelete: "cascade" }),
   documentNumber: text("document_number"), // Số văn bản
   documentType: text("document_type").notNull(), // Loại hồ sơ chính
   
   // Hỗ trợ multi-document transactions - lưu danh sách các loại hồ sơ
-  documentTypes: text("document_types").$type<string[]>().default("[]").notNull(), // Array các loại hồ sơ
-  documentCounts: text("document_counts").$type<Record<string, number>>().default("{}").notNull(), // Số lượng mỗi loại
+  documentTypes: jsonb("document_types").$type<string[]>().default([]).notNull(), // Array các loại hồ sơ
+  documentCounts: jsonb("document_counts").$type<Record<string, number>>().default({}).notNull(), // Số lượng mỗi loại
 
   deliveryCompany: text("delivery_company").notNull(), // Công ty giao
   receivingCompany: text("receiving_company").notNull(), // Công ty nhận
@@ -91,15 +91,15 @@ export const documentTransactions = sqliteTable("document_transactions", {
   notes: text("notes"), // Ghi chú
   status: text("status").default("pending"), // Trạng thái
   signedFilePath: text("signed_file_path"), // Đường dẫn file PDF đã ký
-  isHidden: integer("is_hidden", { mode: "boolean" }).default(false), // Ẩn giao dịch
-  createdAt: text("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+  isHidden: boolean("is_hidden").default(false), // Ẩn giao dịch
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 
-export const adminUsers = sqliteTable("admin_users", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
+export const adminUsers = pgTable("admin_users", {
+  id: serial("id").primaryKey(),
   username: text("username").notNull().unique(),
   password: text("password").notNull(),
-  createdAt: text("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 
 export const insertBusinessSchema = createInsertSchema(businesses).omit({
