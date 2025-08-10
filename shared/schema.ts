@@ -26,6 +26,43 @@ export const businesses = pgTable("businesses", {
   bankAccount: text("bank_account"),
   bankName: text("bank_name"),
   
+  // Các tài khoản cơ bản của doanh nghiệp
+  // Tài khoản khai thuế, nộp thuế
+  taxAccountId: text("tax_account_id"),
+  taxAccountPass: text("tax_account_pass"),
+  
+  // Tài khoản tra cứu HĐĐT
+  invoiceLookupId: text("invoice_lookup_id"),
+  invoiceLookupPass: text("invoice_lookup_pass"),
+  
+  // Web HĐĐT
+  webInvoiceWebsite: text("web_invoice_website"),
+  webInvoiceId: text("web_invoice_id"),
+  webInvoicePass: text("web_invoice_pass"),
+  
+  // Tài khoản bảo hiểm XH-YT
+  socialInsuranceCode: text("social_insurance_code"), // Mã bảo hiểm
+  socialInsuranceId: text("social_insurance_id"),
+  socialInsuranceMainPass: text("social_insurance_main_pass"), // Pass chính
+  socialInsuranceSecondaryPass: text("social_insurance_secondary_pass"), // Pass phụ
+  
+  // Tài khoản TOKEN
+  tokenId: text("token_id"),
+  tokenPass: text("token_pass"),
+  tokenProvider: text("token_provider"), // Đơn vị cung cấp
+  tokenRegistrationDate: text("token_registration_date"), // Ngày đăng ký
+  tokenExpirationDate: text("token_expiration_date"), // Ngày hết hạn
+  tokenManagementLocation: text("token_management_location"), // Nơi quản lý
+  
+  // Tài khoản thống kê
+  statisticsId: text("statistics_id"),
+  statisticsPass: text("statistics_pass"),
+  
+  // Tài khoản phần mềm kiểm toán
+  auditSoftwareWebsite: text("audit_software_website"),
+  auditSoftwareId: text("audit_software_id"),
+  auditSoftwarePass: text("audit_software_pass"),
+  
   customFields: jsonb("custom_fields").$type<Record<string, string>>().default({}),
   notes: text("notes"),
   accessCode: text("access_code"), // Mã truy cập riêng cho từng doanh nghiệp
@@ -77,9 +114,8 @@ export const documentTransactions = pgTable("document_transactions", {
   documentNumber: text("document_number"), // Số văn bản
   documentType: text("document_type").notNull(), // Loại hồ sơ chính
   
-  // Hỗ trợ multi-document transactions - lưu danh sách các loại hồ sơ
-  documentTypes: jsonb("document_types").$type<string[]>().default([]).notNull(), // Array các loại hồ sơ
-  documentCounts: jsonb("document_counts").$type<Record<string, number>>().default({}).notNull(), // Số lượng mỗi loại
+  // Hỗ trợ multi-document transactions với chi tiết đầy đủ
+  documentDetails: jsonb("document_details").$type<Record<string, {quantity: number, unit: string, notes?: string}>>().default({}).notNull(), // Chi tiết hồ sơ: loại -> {số lượng, đơn vị, ghi chú}
 
   deliveryCompany: text("delivery_company").notNull(), // Công ty giao
   receivingCompany: text("receiving_company").notNull(), // Công ty nhận
@@ -91,6 +127,8 @@ export const documentTransactions = pgTable("document_transactions", {
   notes: text("notes"), // Ghi chú
   status: text("status").default("pending"), // Trạng thái
   signedFilePath: text("signed_file_path"), // Đường dẫn file PDF đã ký
+  pdfFilePath: text("pdf_file_path"), // Đường dẫn file PDF đính kèm
+  pdfFileName: text("pdf_file_name"), // Tên file PDF gốc
   isHidden: boolean("is_hidden").default(false), // Ẩn giao dịch
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });

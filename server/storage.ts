@@ -289,6 +289,30 @@ export class DatabaseStorage implements IStorage {
     }
   }
 
+  async updateDocumentTransactionPdf(id: number, pdfFilePath: string | null, pdfFileName: string | null): Promise<boolean> {
+    try {
+      console.log("Updating PDF for transaction:", { id, pdfFilePath, pdfFileName });
+      const result = await db
+        .update(documentTransactions)
+        .set({ pdfFilePath, pdfFileName })
+        .where(eq(documentTransactions.id, id))
+        .returning();
+      console.log("Update result:", result);
+      return result.length > 0;
+    } catch (error) {
+      console.error("Error updating document transaction PDF:", error);
+      return false;
+    }
+  }
+
+  async getDocumentTransaction(id: number): Promise<DocumentTransaction | undefined> {
+    const [transaction] = await db
+      .select()
+      .from(documentTransactions)
+      .where(eq(documentTransactions.id, id));
+    return transaction || undefined;
+  }
+
 
 
   async getDocumentTransactionsByTaxId(taxId: string): Promise<DocumentTransaction[]> {
@@ -521,15 +545,7 @@ export class DatabaseStorage implements IStorage {
     return updatedAccount;
   }
 
-  async updateDocumentTransactionPdf(id: number, signedFilePath: string): Promise<boolean> {
-    try {
-      await db.update(documentTransactions).set({ signedFilePath }).where(eq(documentTransactions.id, id));
-      return true;
-    } catch (error) {
-      console.error("Error updating document transaction PDF:", error);
-      return false;
-    }
-  }
+
 }
 
 export const storage = new DatabaseStorage();

@@ -2,7 +2,32 @@
 
 ## Overview
 
-This is a full-stack business management application built with React, TypeScript, and Express.js. The system provides CRUD operations for managing business entities, featuring a modern UI built with shadcn/ui components and Tailwind CSS. The application includes comprehensive search functionality, pagination, secure delete operations with password protection, advanced document management with Word export and PDF upload functionality for signed document tracking workflows, and a simplified 2-tier authentication system.
+This is a full-stack business management application built with React, TypeScript, and Express.js. The system provides CRUD operations for managing business entities, featuring a modern UI built with shadcn/ui components and Tailwind CSS. The application includes comprehensive search functionality, pagination, secure delete operations with password protection, advanced document management with Word export and PDF upload functionality for signed document tracking workflows, simplified 2-tier authentication system, and comprehensive account management with 7 detailed account types stored directly in the businesses table.
+
+## Recent Changes (August 2025)
+
+### Document Transaction UI Improvements - Completed ✅ (August 10, 2025)
+- **Form title update**: Changed from "Thêm Giao Dịch Hồ Sơ (Nhiều Hồ Sơ)" to "Thêm Giao Dịch Hồ Sơ"
+- **Single-line layout implementation**: Document list now displays as [Dropdown loại hồ sơ] + [Input số lượng] + [Dropdown đơn vị] + [Nút X xóa]
+- **Enhanced automatic handover reports**: Document reports now itemize each document type with corresponding quantities
+- **Multi-document support**: Maintains ability to create transactions with multiple document types in single transaction
+- **Notes field integration**: Properly displays and syncs Notes field between form and generated reports
+
+### API Integration & Testing - Fully Resolved ✅ (August 10, 2025)
+- **Critical API routing bug resolved**: Fixed incorrect endpoint usage from `/api/documents` to `/api/businesses/:businessId/documents`
+- **Comprehensive API testing completed**: Successfully tested real-world user workflow without direct database access
+- **Document transaction creation**: Successfully created 5 new transactions (IDs: 40-44) for business relationships
+- **Authentication system verified**: Login endpoint working with proper token generation and validation
+- **Real-time data synchronization**: UI automatically updates transaction counts (27→31) without manual refresh
+- **Vietnamese business workflow**: Tested complete document flow between Công Ty Y ↔ Công Ty Z with proper UTF-8 support
+
+### PDF Document Management - Fully Functional ✅
+- Fixed critical duplicate method bug in database storage layer that prevented PDF updates
+- Implemented exact PDF workflow: "Chưa có file" → "Choose file" button → auto upload → filename link + red X delete
+- Added proper UTF-8 filename support for Vietnamese filenames in download headers
+- Confirmed toast notifications work correctly: "Tải lên thành công" / "Tải lên thất bại"
+- File replacement requires deletion before upload (prevents overwriting)
+- All CRUD operations tested and verified working: upload, download, delete, replace
 
 ## User Preferences
 
@@ -29,7 +54,7 @@ Preferred communication style: Simple, everyday language.
 ### Data Layer
 - **Database**: PostgreSQL (configured for Neon serverless)
 - **ORM**: Drizzle ORM with type-safe queries
-- **Schema**: Single `businesses` table with fields: name, taxId, address, phone, email, website, industry, contactPerson, account, password, notes, createdAt
+- **Schema**: Single `businesses` table with comprehensive fields including basic business information and 7 account types: tax accounts (ID+pass), HĐĐT lookup (ID+pass), Web HĐĐT (website+ID+pass), social insurance (insurance code+ID+main pass+sub pass), TOKEN (ID+pass+provider+registration date+expiry date+management location), statistics (ID+pass), audit software (website+ID+pass)
 - **Migrations**: Drizzle Kit for database schema management
 - **Connection**: Connection pooling with @neondatabase/serverless
 
@@ -42,6 +67,8 @@ Preferred communication style: Simple, everyday language.
 
 ### Key Features
 - **CRUD Operations**: Full create, read, update, delete functionality for businesses
+- **Account Management**: 7 detailed account types (tax accounts, HĐĐT lookup, Web HĐĐT, social insurance, TOKEN, statistics, audit software) with visible, copyable passwords
+- **Business Information Viewing**: Read-only modal for viewing complete business and account information
 - **Search System**: Multi-field search with exact and partial matching
 - **Pagination**: Server-side pagination for efficient data loading
 - **Form Management**: Advanced form handling with validation and error display

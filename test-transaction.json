@@ -1,0 +1,23 @@
+{
+  "businessId": 11,
+  "documentType": "3 loại hồ sơ: 5 tờ Hồ sơ kế toán, 3 bộ Hồ sơ bảo hiểm, 2 quyển Hồ sơ thuế",
+  "documentDetails": {
+    "Hồ sơ kế toán": {
+      "quantity": 5,
+      "unit": "tờ",
+      "notes": ""
+    },
+    "Hồ sơ bảo hiểm": {
+      "quantity": 3,
+      "unit": "bộ", 
+      "notes": ""
+    },
+    "Hồ sơ thuế": {
+      "quantity": 2,
+      "unit": "quyển",
+      "notes": ""
+    }
+  },
+  "deliveryCompany": "Test Company",
+  "receivingCompany": "Royal Việt Nam"
+}

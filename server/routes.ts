@@ -438,28 +438,98 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Update document transaction with signed file
-  app.put("/api/documents/:id/upload-pdf", async (req, res) => {
+  // Update document transaction with PDF file
+  app.put("/api/documents/:id/pdf", async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) {
         return res.status(400).json({ message: "ID không hợp lệ" });
       }
 
-      const { pdfPath } = req.body;
-      if (!pdfPath) {
-        return res.status(400).json({ message: "Đường dẫn PDF không hợp lệ" });
+      const { pdfUrl, fileName } = req.body;
+      if (!pdfUrl || !fileName) {
+        return res.status(400).json({ message: "URL PDF và tên file là bắt buộc" });
       }
 
-      const success = await storage.updateDocumentTransactionPdf(id, pdfPath);
+      const objectStorageService = new ObjectStorageService();
+      const normalizedPath = objectStorageService.normalizeObjectEntityPath(pdfUrl);
+
+      console.log("Calling updateDocumentTransactionPdf with:", { id, normalizedPath, fileName });
+      const success = await storage.updateDocumentTransactionPdf(id, normalizedPath, fileName);
+      console.log("updateDocumentTransactionPdf result:", success);
+      
       if (!success) {
         return res.status(404).json({ message: "Không tìm thấy giao dịch" });
       }
 
-      res.json({ success: true, message: "Cập nhật file PDF thành công" });
+      res.json({ success: true, objectPath: normalizedPath });
     } catch (error) {
-      console.error("Error uploading PDF:", error);
+      console.error("Error updating PDF:", error);
       res.status(500).json({ message: "Lỗi khi cập nhật file PDF" });
+    }
+  });
+
+  // Delete PDF file from transaction
+  app.delete("/api/documents/:id/pdf", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "ID không hợp lệ" });
+      }
+
+      const transaction = await storage.getDocumentTransaction(id);
+      if (!transaction) {
+        return res.status(404).json({ message: "Không tìm thấy giao dịch" });
+      }
+
+      // Delete file from object storage if exists
+      if (transaction.pdfFilePath) {
+        try {
+          const objectStorageService = new ObjectStorageService();
+          await objectStorageService.deleteObject(transaction.pdfFilePath);
+        } catch (error) {
+          console.warn("Could not delete file from storage:", error);
+        }
+      }
+
+      // Update database to remove file references
+      const success = await storage.updateDocumentTransactionPdf(id, null, null);
+      if (!success) {
+        return res.status(500).json({ message: "Lỗi khi xóa thông tin file" });
+      }
+
+      res.json({ success: true, message: "Xóa file PDF thành công" });
+    } catch (error) {
+      console.error("Error deleting PDF:", error);
+      res.status(500).json({ message: "Lỗi khi xóa file PDF" });
+    }
+  });
+
+  // Download PDF file from transaction
+  app.get("/api/documents/:id/pdf/download", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "ID không hợp lệ" });
+      }
+
+      const transaction = await storage.getDocumentTransaction(id);
+      if (!transaction || !transaction.pdfFilePath) {
+        return res.status(404).json({ message: "Không tìm thấy file PDF" });
+      }
+
+      const objectStorageService = new ObjectStorageService();
+      const objectFile = await objectStorageService.getObjectEntityFile(transaction.pdfFilePath);
+      
+      // Pass custom filename to downloadObject function
+      const fileName = transaction.pdfFileName || `transaction_${id}.pdf`;
+      
+      await objectStorageService.downloadObject(objectFile, res, 3600, fileName);
+    } catch (error) {
+      console.error("Error downloading PDF:", error);
+      if (!res.headersSent) {
+        res.status(500).json({ message: "Lỗi khi tải file PDF" });
+      }
     }
   });
 
@@ -516,7 +586,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         businessId 
       });
       
-      console.log(`Creating document transaction for business ID: ${businessId}`, { businessId, documents: validatedData.documents, deliveryCompany: validatedData.deliveryCompany });
+      console.log(`🔍 Server received request body:`, req.body);
+      console.log(`🔍 Server documentDetails:`, req.body.documentDetails);
+      console.log(`🔍 Validated data documentDetails:`, validatedData.documentDetails);
+      console.log(`Creating document transaction for business ID: ${businessId}`, { businessId, documentDetails: validatedData.documentDetails, deliveryCompany: validatedData.deliveryCompany });
       const transaction = await storage.createDocumentTransaction(validatedData);
       console.log(`Created transaction with ID: ${transaction.id} for business ${businessId}`);
       res.status(201).json(transaction);
@@ -542,7 +615,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       console.log(`Fetching documents for business ID: ${businessId}`);
       const transactions = await storage.getDocumentTransactionsByBusinessId(businessId);
-      console.log(`Found ${transactions.length} transactions for business ${businessId}:`, transactions.map(t => ({ id: t.id, businessId: t.businessId, documents: t.documents })));
+      console.log(`Found ${transactions.length} transactions for business ${businessId}:`, transactions.map(t => ({ id: t.id, businessId: t.businessId, documentDetails: t.documentDetails })));
       res.json(transactions);
     } catch (error) {
       console.error("Error fetching document transactions:", error);
