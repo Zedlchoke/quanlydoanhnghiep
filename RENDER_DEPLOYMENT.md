@@ -1,4 +1,13 @@
-# Deploy to Render - Complete Guide
+# Deploy to Render - UPDATED Guide (August 2025)
+
+## ✅ FIXED PRODUCTION ISSUES
+
+The following critical production issues have been resolved:
+- **CORS Configuration**: Enhanced CORS middleware for cross-origin requests
+- **Database Connection**: Improved connection pooling with timeout handling
+- **Error Handling**: Production-ready error middleware with proper logging
+- **Health Check**: Added `/api/health` endpoint for Render monitoring
+- **Build Process**: Updated build script to include all dependencies
 
 ## Step 1: Prepare Your Code for GitHub
 
@@ -8,17 +17,23 @@
    ```
    This creates `data-export.json` with all your current data.
 
-2. **Create a new GitHub repository:**
+2. **Test production setup locally:**
+   ```bash
+   node scripts/test-production.js
+   ```
+   Verifies database connection and tables.
+
+3. **Create a new GitHub repository:**
    - Go to GitHub.com and click "New repository"
    - Name it: `long-quan-business-management`
    - Make it Public (required for free Render)
    - Don't initialize with README
 
-3. **Push your code to GitHub:**
+4. **Push your code to GitHub:**
    ```bash
    git init
    git add .
-   git commit -m "Initial commit"
+   git commit -m "Production-ready deployment with fixes"
    git branch -M main
    git remote add origin https://github.com/YOUR_USERNAME/long-quan-business-management.git
    git push -u origin main
@@ -126,11 +141,21 @@
    - In Render dashboard, your web service will show a URL like:
    - `https://long-quan-business-management.onrender.com`
 
-2. **Test the application:**
+2. **Verify health check:**
+   - Visit: `https://your-app.onrender.com/api/health`
+   - Should return: `{"status":"ok","database":"connected"}`
+
+3. **Test the full application:**
    - Visit your URL
-   - Try adding a business
    - Test admin login with: `quanadmin` / `01020811`
-   - Test document tracking features
+   - **Test CRUD operations:**
+     - Add a business (verify all account fields save correctly)
+     - View business information modal
+     - Update business details
+     - Create document transactions
+     - Upload/download PDF files
+     - Generate handover reports
+   - Test search and pagination features
 
 ## Step 5: Custom Domain (Optional)
 
@@ -158,8 +183,31 @@
 
 ## Troubleshooting:
 
-- If deployment fails, check the build logs in Render dashboard
-- Database connection issues: Verify DATABASE_URL is correct
-- App not loading: Check that port is set correctly (Render provides PORT env var)
+### Common Issues & Solutions:
+
+1. **Deployment Fails:**
+   - Check build logs in Render dashboard
+   - Verify all dependencies are in package.json
+   - Ensure build script includes middleware: `npm run build`
+
+2. **Database Connection Issues:**
+   - Verify DATABASE_URL is correct in environment variables
+   - Check SSL settings: production uses `{ rejectUnauthorized: false }`
+   - Test connection: `curl https://your-app.onrender.com/api/health`
+
+3. **CRUD Operations Not Working:**
+   - Check CORS settings are properly configured
+   - Verify all API endpoints return proper status codes
+   - Check browser console for JavaScript errors
+
+4. **Login Works But Can't Add Businesses:**
+   - **FIXED**: Enhanced error handling and database connection pooling
+   - **FIXED**: Improved CORS configuration for cross-origin requests
+   - **FIXED**: Added proper timeout handling for long operations
+
+5. **Performance Issues:**
+   - **FIXED**: Connection pooling configured with max 10 connections
+   - **FIXED**: Added graceful shutdown handlers
+   - Free tier sleeps after 15 min inactivity (normal behavior)
 
 Your app will be live at: `https://YOUR_APP_NAME.onrender.com`

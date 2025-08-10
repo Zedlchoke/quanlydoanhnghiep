@@ -5,6 +5,7 @@ services:
     plan: free
     buildCommand: npm install && npm run build
     startCommand: npm start
+    healthCheckPath: /api/health
     envVars:
       - key: NODE_ENV
         value: production
@@ -12,6 +13,8 @@ services:
         fromDatabase:
           name: long-quan-db
           property: connectionString
+      - key: PORT
+        value: 10000
 
 databases:
   - name: long-quan-db

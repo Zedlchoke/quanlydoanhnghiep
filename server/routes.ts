@@ -24,6 +24,30 @@ import {
 const DELETE_PASSWORD = "0102";
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // Health check endpoint for Render
+  app.get("/api/health", async (req, res) => {
+    try {
+      // Simple database connection test
+      const { pool } = await import("./db");
+      const client = await pool.connect();
+      await client.query('SELECT 1 as health_check');
+      client.release();
+      
+      res.json({ 
+        status: "ok", 
+        timestamp: new Date().toISOString(),
+        database: "connected"
+      });
+    } catch (error) {
+      console.error('Health check failed:', error);
+      res.status(500).json({ 
+        status: "error", 
+        message: "Database connection failed",
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+
   // Database initialization endpoint
   app.post("/api/initialize-db", async (req, res) => {
     try {
