@@ -51,8 +51,10 @@ export interface IStorage {
   
   // Business Account methods
   getBusinessAccount(businessId: number): Promise<BusinessAccount | null>;
+  getBusinessAccountByBusinessId(businessId: number): Promise<BusinessAccount | null>;
   createBusinessAccount(account: InsertBusinessAccount): Promise<BusinessAccount>;
   updateBusinessAccount(businessId: number, account: Partial<InsertBusinessAccount>): Promise<BusinessAccount>;
+  updateDocumentPdf(id: number, pdfPath: string): Promise<boolean>;
   
   // Database initialization
   initializeDatabase(): Promise<void>;
@@ -206,7 +208,7 @@ export class DatabaseStorage implements IStorage {
   async createDocumentTransaction(transaction: InsertDocumentTransaction): Promise<DocumentTransaction> {
     const [createdTransaction] = await db
       .insert(documentTransactions)
-      .values(transaction)
+      .values([transaction])
       .returning();
     return createdTransaction;
   }
@@ -457,6 +459,56 @@ export class DatabaseStorage implements IStorage {
     console.log("Database initialization completed");
   }
 
+  // Business Account implementation
+  async getBusinessAccountByBusinessId(businessId: number): Promise<BusinessAccount | null> {
+    return this.getBusinessAccount(businessId);
+  }
+
+  async getBusinessAccount(businessId: number): Promise<BusinessAccount | null> {
+    const [account] = await db
+      .select()
+      .from(businessAccounts)
+      .where(eq(businessAccounts.businessId, businessId));
+    return account || null;
+  }
+
+  async createBusinessAccount(account: InsertBusinessAccount): Promise<BusinessAccount> {
+    const [createdAccount] = await db
+      .insert(businessAccounts)
+      .values(account)
+      .returning();
+    return createdAccount;
+  }
+
+  async updateBusinessAccount(businessId: number, account: Partial<InsertBusinessAccount>): Promise<BusinessAccount> {
+    const [updatedAccount] = await db
+      .update(businessAccounts)
+      .set(account)
+      .where(eq(businessAccounts.businessId, businessId))
+      .returning();
+    
+    if (!updatedAccount) {
+      // If no record exists, create one
+      return this.createBusinessAccount({ ...account, businessId } as InsertBusinessAccount);
+    }
+    
+    return updatedAccount;
+  }
+
+  async updateDocumentPdf(id: number, pdfPath: string): Promise<boolean> {
+    try {
+      const result = await db
+        .update(documentTransactions)
+        .set({ signedFilePath: pdfPath })
+        .where(eq(documentTransactions.id, id))
+        .returning();
+      return result.length > 0;
+    } catch (error) {
+      console.error("Error updating document PDF:", error);
+      return false;
+    }
+  }
+
   // New authentication methods
   async authenticateUser(login: UserLoginRequest): Promise<{ userType: string; userData: any } | null> {
     const { userType, identifier, password } = login;
@@ -508,42 +560,7 @@ export class DatabaseStorage implements IStorage {
     }
   }
 
-  // Business Account methods implementation
-  async getBusinessAccount(businessId: number): Promise<BusinessAccount | null> {
-    try {
-      const [account] = await db
-        .select()
-        .from(businessAccounts)
-        .where(eq(businessAccounts.businessId, businessId));
-      return account || null;
-    } catch (error) {
-      console.error("Error fetching business account:", error);
-      return null;
-    }
-  }
 
-  async createBusinessAccount(account: InsertBusinessAccount): Promise<BusinessAccount> {
-    const [createdAccount] = await db
-      .insert(businessAccounts)
-      .values(account)
-      .returning();
-    return createdAccount;
-  }
-
-  async updateBusinessAccount(businessId: number, account: Partial<InsertBusinessAccount>): Promise<BusinessAccount> {
-    const [updatedAccount] = await db
-      .update(businessAccounts)
-      .set(account)
-      .where(eq(businessAccounts.businessId, businessId))
-      .returning();
-    
-    if (!updatedAccount) {
-      // If no record exists, create one
-      return this.createBusinessAccount({ ...account, businessId } as InsertBusinessAccount);
-    }
-    
-    return updatedAccount;
-  }
 
 
 }

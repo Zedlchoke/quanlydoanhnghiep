@@ -369,7 +369,7 @@ var DatabaseStorage = class {
   }
   // Document transaction operations
   async createDocumentTransaction(transaction) {
-    const [createdTransaction] = await db.insert(documentTransactions).values(transaction).returning();
+    const [createdTransaction] = await db.insert(documentTransactions).values([transaction]).returning();
     return createdTransaction;
   }
   async getDocumentTransactionsByBusinessId(businessId) {
@@ -526,6 +526,34 @@ var DatabaseStorage = class {
     }
     console.log("Database initialization completed");
   }
+  // Business Account implementation
+  async getBusinessAccountByBusinessId(businessId) {
+    return this.getBusinessAccount(businessId);
+  }
+  async getBusinessAccount(businessId) {
+    const [account] = await db.select().from(businessAccounts).where(eq(businessAccounts.businessId, businessId));
+    return account || null;
+  }
+  async createBusinessAccount(account) {
+    const [createdAccount] = await db.insert(businessAccounts).values(account).returning();
+    return createdAccount;
+  }
+  async updateBusinessAccount(businessId, account) {
+    const [updatedAccount] = await db.update(businessAccounts).set(account).where(eq(businessAccounts.businessId, businessId)).returning();
+    if (!updatedAccount) {
+      return this.createBusinessAccount({ ...account, businessId });
+    }
+    return updatedAccount;
+  }
+  async updateDocumentPdf(id, pdfPath) {
+    try {
+      const result = await db.update(documentTransactions).set({ signedFilePath: pdfPath }).where(eq(documentTransactions.id, id)).returning();
+      return result.length > 0;
+    } catch (error) {
+      console.error("Error updating document PDF:", error);
+      return false;
+    }
+  }
   // New authentication methods
   async authenticateUser(login) {
     const { userType, identifier, password } = login;
@@ -563,27 +591,6 @@ var DatabaseStorage = class {
       console.error("Error updating business access code:", error);
       return false;
     }
-  }
-  // Business Account methods implementation
-  async getBusinessAccount(businessId) {
-    try {
-      const [account] = await db.select().from(businessAccounts).where(eq(businessAccounts.businessId, businessId));
-      return account || null;
-    } catch (error) {
-      console.error("Error fetching business account:", error);
-      return null;
-    }
-  }
-  async createBusinessAccount(account) {
-    const [createdAccount] = await db.insert(businessAccounts).values(account).returning();
-    return createdAccount;
-  }
-  async updateBusinessAccount(businessId, account) {
-    const [updatedAccount] = await db.update(businessAccounts).set(account).where(eq(businessAccounts.businessId, businessId)).returning();
-    if (!updatedAccount) {
-      return this.createBusinessAccount({ ...account, businessId });
-    }
-    return updatedAccount;
   }
 };
 var storage = new DatabaseStorage();
@@ -779,13 +786,17 @@ var DELETE_PASSWORD = "0102";
 async function registerRoutes(app2) {
   app2.get("/api/health", async (req, res) => {
     try {
-      const testQuery = await storage.getBusinesses(1, 0);
+      const { pool: pool2 } = await Promise.resolve().then(() => (init_db(), db_exports));
+      const client = await pool2.connect();
+      await client.query("SELECT 1 as health_check");
+      client.release();
       res.json({
         status: "ok",
         timestamp: (/* @__PURE__ */ new Date()).toISOString(),
         database: "connected"
       });
     } catch (error) {
+      console.error("Health check failed:", error);
       res.status(500).json({
         status: "error",
         message: "Database connection failed",
@@ -1405,7 +1416,7 @@ async function registerRoutes(app2) {
   app2.post("/api/documents/pdf-upload", async (req, res) => {
     try {
       const objectStorageService = new ObjectStorageService();
-      const uploadURL = await objectStorageService.getPDFUploadURL();
+      const uploadURL = await objectStorageService.getObjectEntityUploadURL();
       res.json({ uploadURL });
     } catch (error) {
       console.error("Error getting PDF upload URL:", error);
@@ -1415,7 +1426,7 @@ async function registerRoutes(app2) {
   app2.get("/documents/:documentPath(*)", async (req, res) => {
     const objectStorageService = new ObjectStorageService();
     try {
-      const pdfFile = await objectStorageService.getPDFFile(req.path);
+      const pdfFile = await objectStorageService.getObjectEntityFile(`/objects/${req.params.documentPath}`);
       objectStorageService.downloadObject(pdfFile, res);
     } catch (error) {
       console.error("Error accessing PDF document:", error);
@@ -1428,7 +1439,7 @@ async function registerRoutes(app2) {
   app2.post("/api/objects/upload", async (req, res) => {
     try {
       const objectStorageService = new ObjectStorageService();
-      const uploadURL = await objectStorageService.getPDFUploadURL();
+      const uploadURL = await objectStorageService.getObjectEntityUploadURL();
       res.json({ uploadURL });
     } catch (error) {
       console.error("Error getting upload URL:", error);
@@ -1438,7 +1449,7 @@ async function registerRoutes(app2) {
   app2.get("/objects/:objectPath(*)", async (req, res) => {
     try {
       const objectStorageService = new ObjectStorageService();
-      const objectFile = await objectStorageService.getPDFFile(`/documents/${req.params.objectPath}`);
+      const objectFile = await objectStorageService.getObjectEntityFile(`/objects/${req.params.objectPath}`);
       objectStorageService.downloadObject(objectFile, res);
     } catch (error) {
       console.error("Error downloading object:", error);

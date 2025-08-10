@@ -793,7 +793,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/documents/pdf-upload", async (req, res) => {
     try {
       const objectStorageService = new ObjectStorageService();
-      const uploadURL = await objectStorageService.getPDFUploadURL();
+      const uploadURL = await objectStorageService.getObjectEntityUploadURL();
       res.json({ uploadURL });
     } catch (error) {
       console.error("Error getting PDF upload URL:", error);
@@ -804,7 +804,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/documents/:documentPath(*)", async (req, res) => {
     const objectStorageService = new ObjectStorageService();
     try {
-      const pdfFile = await objectStorageService.getPDFFile(req.path);
+      const pdfFile = await objectStorageService.getObjectEntityFile(`/objects/${req.params.documentPath}`);
       objectStorageService.downloadObject(pdfFile, res);
     } catch (error) {
       console.error("Error accessing PDF document:", error);
@@ -819,7 +819,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/objects/upload", async (req, res) => {
     try {
       const objectStorageService = new ObjectStorageService();
-      const uploadURL = await objectStorageService.getPDFUploadURL();
+      const uploadURL = await objectStorageService.getObjectEntityUploadURL();
       res.json({ uploadURL });
     } catch (error) {
       console.error("Error getting upload URL:", error);
@@ -830,7 +830,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/objects/:objectPath(*)", async (req, res) => {
     try {
       const objectStorageService = new ObjectStorageService();
-      const objectFile = await objectStorageService.getPDFFile(`/documents/${req.params.objectPath}`);
+      const objectFile = await objectStorageService.getObjectEntityFile(`/objects/${req.params.objectPath}`);
       objectStorageService.downloadObject(objectFile, res);
     } catch (error) {
       console.error("Error downloading object:", error);
