@@ -26,6 +26,7 @@ export interface IStorage {
   createBusiness(business: InsertBusiness): Promise<Business>;
   getBusinessById(id: number): Promise<Business | undefined>;
   getAllBusinesses(page?: number, limit?: number, sortBy?: string, sortOrder?: string): Promise<{ businesses: Business[], total: number }>;
+  getAllBusinessesForAutocomplete(): Promise<Business[]>;
   updateBusiness(business: UpdateBusiness): Promise<Business | undefined>;
   deleteBusiness(id: number): Promise<boolean>;
   searchBusinesses(search: SearchBusiness): Promise<Business[]>;
@@ -35,6 +36,7 @@ export interface IStorage {
   // Document transaction operations
   createDocumentTransaction(transaction: InsertDocumentTransaction): Promise<DocumentTransaction>;
   getDocumentTransactionsByBusinessId(businessId: number): Promise<DocumentTransaction[]>;
+  getAllDocumentTransactions(): Promise<DocumentTransaction[]>;
   deleteDocumentTransaction(id: number): Promise<boolean>;
   updateDocumentTransactionSignedFile(id: number, signedFilePath: string): Promise<boolean>;
   
@@ -111,6 +113,15 @@ export class DatabaseStorage implements IStorage {
       businesses: businessList,
       total: totalResult[0]?.count || 0
     };
+  }
+
+  async getAllBusinessesForAutocomplete(): Promise<Business[]> {
+    const businessList = await db
+      .select()
+      .from(businesses)
+      .orderBy(businesses.name);
+    
+    return businessList;
   }
 
   async updateBusiness(business: UpdateBusiness): Promise<Business | undefined> {
@@ -208,7 +219,7 @@ export class DatabaseStorage implements IStorage {
   async createDocumentTransaction(transaction: InsertDocumentTransaction): Promise<DocumentTransaction> {
     const [createdTransaction] = await db
       .insert(documentTransactions)
-      .values([transaction])
+      .values(transaction)
       .returning();
     return createdTransaction;
   }
@@ -266,9 +277,7 @@ export class DatabaseStorage implements IStorage {
     }
   }
 
-  async getAllBusinessesForAutocomplete(): Promise<Business[]> {
-    return await db.select().from(businesses).orderBy(businesses.name);
-  }
+
 
   async deleteDocumentTransaction(id: number): Promise<boolean> {
     const result = await db

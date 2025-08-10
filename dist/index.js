@@ -325,6 +325,10 @@ var DatabaseStorage = class {
       total: totalResult[0]?.count || 0
     };
   }
+  async getAllBusinessesForAutocomplete() {
+    const businessList = await db.select().from(businesses).orderBy(businesses.name);
+    return businessList;
+  }
   async updateBusiness(business) {
     const { id, ...updateData } = business;
     const [updatedBusiness] = await db.update(businesses).set(updateData).where(eq(businesses.id, id)).returning();
@@ -369,7 +373,7 @@ var DatabaseStorage = class {
   }
   // Document transaction operations
   async createDocumentTransaction(transaction) {
-    const [createdTransaction] = await db.insert(documentTransactions).values([transaction]).returning();
+    const [createdTransaction] = await db.insert(documentTransactions).values(transaction).returning();
     return createdTransaction;
   }
   async getDocumentTransactionsByBusinessId(businessId) {
@@ -400,9 +404,6 @@ var DatabaseStorage = class {
       console.error("Error updating signed file path:", error);
       return false;
     }
-  }
-  async getAllBusinessesForAutocomplete() {
-    return await db.select().from(businesses).orderBy(businesses.name);
   }
   async deleteDocumentTransaction(id) {
     const result = await db.delete(documentTransactions).where(eq(documentTransactions.id, id));
