@@ -50,7 +50,7 @@ export function MultiDocumentTransactionForm({ business, onSuccess }: MultiDocum
   const { data: businessesData } = useQuery({
     queryKey: ["/api/businesses/all"],
   });
-  const businesses = businessesData || [];
+  const businesses = (businessesData as Business[]) || [];
   const allCompanyOptions = [
     ...COMPANY_OPTIONS,
     ...businesses.map((b: Business) => b.name),
@@ -72,11 +72,11 @@ export function MultiDocumentTransactionForm({ business, onSuccess }: MultiDocum
       documentNumber: "",
       deliveryCompany: COMPANY_OPTIONS[0],
       receivingCompany: business.name,
-      deliveryPerson: user?.userData?.username || "",
+      deliveryPerson: (user as any)?.userData?.username || "",
       receivingPerson: business.contactPerson || "",
       deliveryDate: getCurrentDateTime(),
       receivingDate: "",
-      handledBy: user?.userData?.username || "",
+      handledBy: (user as any)?.userData?.username || "",
       notes: "",
       status: "pending",
       signedFilePath: "",
@@ -84,16 +84,15 @@ export function MultiDocumentTransactionForm({ business, onSuccess }: MultiDocum
   });
 
   const createMutation = useMutation({
-    mutationFn: (data: any) =>
-      apiRequest(`/api/businesses/${business.id}/documents`, {
-        method: "POST",
-        body: JSON.stringify({
-          ...data,
-          documentTypes: selectedDocumentTypes,
-          documentCounts,
-          signedFilePath: uploadedPDFs[0] || "",
-        }),
-      }),
+    mutationFn: async (data: any) => {
+      const response = await apiRequest("POST", `/api/businesses/${business.id}/documents`, {
+        ...data,
+        documentTypes: selectedDocumentTypes,
+        documentCounts,
+        signedFilePath: uploadedPDFs[0] || "",
+      });
+      return response.json();
+    },
     onSuccess: () => {
       toast({ title: "Thành công", description: "Tạo giao dịch hồ sơ thành công" });
       form.reset();
