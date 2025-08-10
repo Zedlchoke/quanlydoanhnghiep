@@ -14,6 +14,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem } from "@/components/ui/command";
+import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from "@/components/ui/pagination";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-new-auth";
 import { ObjectUploader } from "@/components/ObjectUploader";
@@ -29,12 +30,14 @@ interface EnhancedDocumentListProps {
   isVisible: boolean;
 }
 
-// Schema cho nhiều hồ sơ với mã số thuế
+// Schema cho nhiều hồ sơ với số lượng và đơn vị
 const multiDocumentSchema = z.object({
   businessId: z.number(),
   documentNumber: z.string().optional(),
   documents: z.array(z.object({
     type: z.string().min(1, "Loại hồ sơ không được để trống"),
+    quantity: z.number().min(1, "Số lượng phải lớn hơn 0"),
+    unit: z.string().min(1, "Đơn vị không được để trống"),
   })).min(1, "Phải có ít nhất 1 hồ sơ"),
   deliveryTaxId: z.string().min(1, "Mã số thuế công ty giao không được để trống"),
   receivingTaxId: z.string().min(1, "Mã số thuế công ty nhận không được để trống"),
@@ -59,6 +62,14 @@ const DOCUMENT_TYPES = [
   "Hồ sơ khác",
 ];
 
+const DOCUMENT_UNITS = [
+  "bộ",
+  "tài liệu",
+  "phần",
+  "quyển",
+  "tờ",
+];
+
 export function EnhancedDocumentList({ selectedBusinessId, selectedBusinessName, isVisible }: EnhancedDocumentListProps) {
   const { toast } = useToast();
   const { user } = useAuth();
@@ -69,6 +80,11 @@ export function EnhancedDocumentList({ selectedBusinessId, selectedBusinessName,
   const [newDocumentNumber, setNewDocumentNumber] = useState("");
   const [viewingTransaction, setViewingTransaction] = useState<DocumentTransaction | null>(null);
   const [filterMode, setFilterMode] = useState<'all' | 'business' | 'company' | 'taxid'>('all');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [deleteTransactionId, setDeleteTransactionId] = useState<number | null>(null);
+  const [deletePassword, setDeletePassword] = useState("");
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const transactionsPerPage = 10;
   
   // States cho tax ID dropdowns
   const [deliveryTaxIdOpen, setDeliveryTaxIdOpen] = useState(false);
@@ -100,7 +116,7 @@ export function EnhancedDocumentList({ selectedBusinessId, selectedBusinessName,
     resolver: zodResolver(multiDocumentSchema),
     defaultValues: {
       businessId: selectedBusinessId || 0,
-      documents: [{ type: "" }],
+      documents: [{ type: "", quantity: 1, unit: "bộ" }],
       deliveryTaxId: "",
       receivingTaxId: "",
       deliveryCompany: "",
@@ -122,37 +138,40 @@ export function EnhancedDocumentList({ selectedBusinessId, selectedBusinessName,
   // Sử dụng SyncContext cho dữ liệu
   const { businesses: allBusinesses, transactions: allTransactions, refetchAll } = useSyncContext();
   
-  // Lọc transactions theo chế độ
-  const transactions = (() => {
+  // Lọc transactions theo chế độ và sắp xếp theo thời gian tạo mới nhất
+  const allFilteredTransactions = (() => {
     if (!isVisible) return [];
     
-    if (filterMode === 'business' && selectedBusinessId) {
-      return allTransactions.filter(t => t.businessId === selectedBusinessId);
-    }
+    let filtered = allTransactions;
     
-    if (filterMode === 'company' && selectedBusinessId) {
+    if (filterMode === 'business' && selectedBusinessId) {
+      filtered = allTransactions.filter(t => t.businessId === selectedBusinessId);
+    } else if (filterMode === 'company' && selectedBusinessId) {
       const selectedBusiness = allBusinesses.find(b => b.id === selectedBusinessId);
       if (selectedBusiness?.taxId) {
-        return allTransactions.filter(t => 
+        filtered = allTransactions.filter(t => 
           t.deliveryCompany?.includes(selectedBusiness.name) || t.receivingCompany?.includes(selectedBusiness.name)
         );
       }
-    }
-    
-    if (filterMode === 'taxid' && searchTaxIdValue) {
+    } else if (filterMode === 'taxid' && searchTaxIdValue) {
       const searchBusiness = allBusinesses.find(b => b.taxId === searchTaxIdValue);
       if (searchBusiness) {
-        return allTransactions.filter(t => 
+        filtered = allTransactions.filter(t =>
           t.deliveryCompany?.includes(searchBusiness.name) || t.receivingCompany?.includes(searchBusiness.name)
         );
       }
     }
     
-    return allTransactions;
+    // Sắp xếp theo thời gian tạo mới nhất (createdAt desc)
+    return filtered.sort((a, b) => {
+      const dateA = new Date(a.createdAt || a.deliveryDate);
+      const dateB = new Date(b.createdAt || b.deliveryDate);
+      return dateB.getTime() - dateA.getTime();
+    });
   })();
 
   // Lọc transactions theo ngày tháng
-  const filteredTransactions = transactions.filter(transaction => {
+  const filteredTransactions = allFilteredTransactions.filter(transaction => {
     if (dateFilter.fromDate || dateFilter.toDate) {
       const transactionDate = new Date(transaction.deliveryDate);
       const fromDate = dateFilter.fromDate ? new Date(dateFilter.fromDate) : null;
@@ -163,6 +182,13 @@ export function EnhancedDocumentList({ selectedBusinessId, selectedBusinessName,
     }
     return true;
   });
+
+  // Áp dụng phân trang
+  const totalTransactions = filteredTransactions.length;
+  const totalPages = Math.ceil(totalTransactions / transactionsPerPage);
+  const startIndex = (currentPage - 1) * transactionsPerPage;
+  const endIndex = startIndex + transactionsPerPage;
+  const paginatedTransactions = filteredTransactions.slice(startIndex, endIndex);
 
   // Helper function để lọc businesses theo tìm kiếm
   const getFilteredBusinesses = (searchTerm: string) => {
@@ -258,36 +284,49 @@ export function EnhancedDocumentList({ selectedBusinessId, selectedBusinessName,
 
   // Hàm submit form tạo giao dịch  
   const onSubmit = async (data: MultiDocumentFormData) => {
-    console.log(`🚀 Creating ${data.documents.length} transactions for business ID: ${data.businessId}`);
+    console.log(`🚀 Creating single transaction with ${data.documents.length} document types for business ID: ${data.businessId}`);
     
     try {
-      // Tạo từng transaction một cách tuần tự để đảm bảo consistency
-      for (let index = 0; index < data.documents.length; index++) {
-        const doc = data.documents[index];
-        const transactionData = {
-          documentNumber: data.documentNumber || undefined,
-          documentType: `${doc.type} (${index + 1}/${data.documents.length})`,
-          deliveryCompany: data.deliveryCompany,
-          receivingCompany: data.receivingCompany,
-          deliveryPerson: data.deliveryPerson,
-          receivingPerson: data.receivingPerson,
-          deliveryDate: data.deliveryDate,
-          receivingDate: data.receivingDate || undefined,
-          handledBy: data.handledBy,
-          notes: `${data.notes ? data.notes + '\n' : ''}Hồ sơ ${index + 1}/${data.documents.length}`,
-          status: 'pending' as const
+      // Tạo documentDetails object từ array documents
+      const documentDetails: Record<string, { quantity: number; unit: string; notes?: string }> = {};
+      data.documents.forEach((doc) => {
+        documentDetails[doc.type] = {
+          quantity: doc.quantity,
+          unit: doc.unit,
+          notes: data.notes || undefined
         };
-        
-        await createTransaction.mutateAsync({
-          businessId: data.businessId,
-          transactionData
-        });
-      }
+      });
+
+      // Tạo summary cho documentType field
+      const documentCount = data.documents.length;
+      const totalItems = data.documents.reduce((sum, doc) => sum + doc.quantity, 0);
+      const summaryParts = data.documents.map(doc => `${doc.quantity} ${doc.unit} ${doc.type}`);
+      const documentTypeSummary = `${documentCount} loại hồ sơ: ${summaryParts.join(", ")}`;
+
+      const transactionData = {
+        documentNumber: data.documentNumber || undefined,
+        documentType: documentTypeSummary,
+        documentDetails: documentDetails,
+        deliveryCompany: data.deliveryCompany,
+        receivingCompany: data.receivingCompany,
+        deliveryPerson: data.deliveryPerson,
+        receivingPerson: data.receivingPerson,
+        deliveryDate: data.deliveryDate,
+        receivingDate: data.receivingDate || undefined,
+        handledBy: data.handledBy,
+        notes: data.notes || undefined,
+        status: 'pending' as const
+      };
       
-      // Reset form và đóng dialog khi tất cả thành công
+      await createTransaction.mutateAsync({
+        businessId: data.businessId,
+        transactionData
+      });
+      
+      // Reset form và đóng dialog khi thành công
       form.reset({
         businessId: selectedBusinessId || 0,
-        documents: [{ type: "" }],
+        documents: [{ type: "", quantity: 1, unit: "bộ" }],
         deliveryTaxId: "",
         receivingTaxId: "",
         deliveryCompany: "",
@@ -307,13 +346,15 @@ export function EnhancedDocumentList({ selectedBusinessId, selectedBusinessName,
   };
 
   const deleteTransaction = useMutation({
-    mutationFn: async (id: number) => {
+    mutationFn: async ({ id, password }: { id: number; password: string }) => {
       const token = localStorage.getItem('authToken');
       const response = await fetch(`/api/documents/${id}`, {
         method: "DELETE",
         headers: {
           'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
         },
+        body: JSON.stringify({ password }),
       });
       if (!response.ok) throw new Error("Failed to delete transaction");
       return response.json();
@@ -323,6 +364,9 @@ export function EnhancedDocumentList({ selectedBusinessId, selectedBusinessName,
         title: "Thành công",
         description: "Đã xóa giao dịch hồ sơ",
       });
+      setShowDeleteConfirm(false);
+      setDeleteTransactionId(null);
+      setDeletePassword("");
       refetchAll();
     },
     onError: () => {
@@ -359,18 +403,25 @@ export function EnhancedDocumentList({ selectedBusinessId, selectedBusinessName,
     },
   });
 
+  const handleDeleteConfirm = () => {
+    if (deleteTransactionId && deletePassword) {
+      deleteTransaction.mutate({ id: deleteTransactionId, password: deletePassword });
+    }
+  };
+
   const uploadPdf = useMutation({
-    mutationFn: async ({ id, pdfPath }: { id: number; pdfPath: string }) => {
-      const token = localStorage.getItem('authToken');
-      const response = await fetch(`/api/documents/${id}/upload-pdf`, {
+    mutationFn: async ({ id, pdfUrl, fileName }: { id: number; pdfUrl: string; fileName: string }) => {
+      const response = await fetch(`/api/documents/${id}/pdf`, {
         method: "PUT",
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
         },
-        body: JSON.stringify({ pdfPath }),
+        body: JSON.stringify({ pdfUrl, fileName }),
       });
-      if (!response.ok) throw new Error("Failed to upload PDF");
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || "Failed to upload PDF");
+      }
       return response.json();
     },
     onSuccess: () => {
@@ -380,9 +431,80 @@ export function EnhancedDocumentList({ selectedBusinessId, selectedBusinessName,
       });
       refetchAll();
     },
+    onError: (error: Error) => {
+      console.error('Upload error:', error);
+      toast({
+        title: "Lỗi",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Delete PDF from transaction
+  const deletePdf = useMutation({
+    mutationFn: async (id: number) => {
+      const response = await fetch(`/api/documents/${id}/pdf`, {
+        method: 'DELETE',
+      });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || 'Xóa file thất bại');
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      refetchAll();
+      toast({
+        title: "Thành công",
+        description: "Xóa file PDF thành công",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Lỗi",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
   });
 
 
+
+  // Function to generate document table rows from documentDetails
+  const generateDocumentRows = (transaction: DocumentTransaction): string => {
+    if (transaction.documentDetails && typeof transaction.documentDetails === 'object') {
+      let index = 1;
+      return Object.entries(transaction.documentDetails).map(([documentType, details]) => {
+        if (details && typeof details === 'object' && 'quantity' in details && 'unit' in details) {
+          const capitalizedUnit = details.unit.charAt(0).toUpperCase() + details.unit.slice(1);
+          const row = `
+                <tr>
+                    <td>${index}</td>
+                    <td>${documentType}</td>
+                    <td>${capitalizedUnit}</td>
+                    <td>${details.quantity}</td>
+                    <td>Gốc</td>
+                    <td>-</td>
+                </tr>`;
+          index++;
+          return row;
+        }
+        return '';
+      }).filter(row => row.trim()).join('');
+    }
+    
+    // Fallback for legacy transactions
+    return `
+                <tr>
+                    <td>1</td>
+                    <td>${transaction.documentType || 'Tài liệu'}</td>
+                    <td>Tờ</td>
+                    <td>1</td>
+                    <td>Gốc</td>
+                    <td>-</td>
+                </tr>`;
+  };
 
   const generateInvoiceForm = (transaction: DocumentTransaction) => {
     const htmlContent = `
@@ -393,7 +515,44 @@ export function EnhancedDocumentList({ selectedBusinessId, selectedBusinessName,
     <title>Biên Bản Bàn Giao Tài Liệu</title>
     <style>
         body { font-family: 'Times New Roman', serif; margin: 20px; }
-        .header { text-align: center; margin-bottom: 30px; }
+        .header { 
+            display: flex; 
+            align-items: center; 
+            margin-bottom: 30px; 
+            border-bottom: 2px solid #000;
+            padding-bottom: 10px;
+        }
+        .logo-placeholder { 
+            width: 80px; 
+            height: 80px; 
+            margin-right: 20px;
+            border: 1px dashed #ccc;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .company-info { 
+            flex: 1; 
+            display: flex; 
+            justify-content: space-between; 
+        }
+        .company-left h2 { 
+            font-size: 24px; 
+            font-weight: bold; 
+            margin: 0 0 10px 0; 
+            color: #000;
+        }
+        .company-left p { 
+            margin: 2px 0; 
+            font-size: 12px; 
+        }
+        .company-right { 
+            text-align: right; 
+        }
+        .company-right p { 
+            margin: 2px 0; 
+            font-size: 12px; 
+        }
         .title { text-align: center; font-size: 18px; font-weight: bold; margin: 20px 0; }
         .content { margin: 20px 0; }
         .table { width: 100%; border-collapse: collapse; margin: 20px 0; }
@@ -405,10 +564,22 @@ export function EnhancedDocumentList({ selectedBusinessId, selectedBusinessName,
 </head>
 <body>
     <div class="header">
-        <h2>ROYAL VIỆT NAM</h2>
-        <p>54/6 Nguyễn Xí, P.26, Q.Bình Thạnh, Tp.HCM</p>
-        <p>083.5111720-721; Fax : 083.5117919</p>
-        <p>tuvanktetoanthue.vn - royal@tuvanktetoanthue.vn</p>
+        <div class="logo-placeholder">
+            <p style="font-size: 10px; color: #666; text-align: center; margin: 0;">
+                [Logo sẽ được thêm ở đây]
+            </p>
+        </div>
+        <div class="company-info">
+            <div class="company-left">
+                <h2>ROYAL VIỆT NAM</h2>
+                <p>54/6 Nguyễn Xí, P.26, Q.Bình Thạnh, Tp.HCM</p>
+                <p>tuvanktetoanthue.vn</p>
+            </div>
+            <div class="company-right">
+                <p>083.5111720-721; Fax : 083.5117919</p>
+                <p>royal@tuvanktetoanthue.vn</p>
+            </div>
+        </div>
     </div>
     
     <div class="title">
@@ -433,19 +604,12 @@ export function EnhancedDocumentList({ selectedBusinessId, selectedBusinessName,
                     <th>Tên tài liệu</th>
                     <th>Đvt</th>
                     <th>Số lượng</th>
-                    <th>Góc/photo</th>
+                    <th>Gốc/photo</th>
                     <th>Ghi chú</th>
                 </tr>
             </thead>
             <tbody>
-                <tr>
-                    <td>1</td>
-                    <td>${transaction.documentType}</td>
-                    <td>Tờ</td>
-                    <td>1</td>
-                    <td>Góc</td>
-                    <td>${transaction.notes || '-'}</td>
-                </tr>
+                ${generateDocumentRows(transaction)}
             </tbody>
         </table>
         
@@ -654,19 +818,21 @@ export function EnhancedDocumentList({ selectedBusinessId, selectedBusinessName,
         </CardHeader>
         <CardContent>
           {filteredTransactions.length > 0 ? (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Số văn bản</TableHead>
-                  <TableHead>Công ty giao</TableHead>
-                  <TableHead>Công ty nhận</TableHead>
-                  <TableHead>Ngày giao</TableHead>
-                  <TableHead>File PDF</TableHead>
-                  <TableHead>Thao tác</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredTransactions.map((transaction) => (
+            <>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Số văn bản</TableHead>
+                    <TableHead>Chi tiết hồ sơ</TableHead>
+                    <TableHead>Công ty giao</TableHead>
+                    <TableHead>Công ty nhận</TableHead>
+                    <TableHead>Ngày giao</TableHead>
+                    <TableHead>File PDF</TableHead>
+                    <TableHead>Thao tác</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {paginatedTransactions.map((transaction) => (
                   <TableRow key={transaction.id}>
                     <TableCell className="font-mono text-sm">
                       {editingDocumentNumber === transaction.id ? (
@@ -717,6 +883,28 @@ export function EnhancedDocumentList({ selectedBusinessId, selectedBusinessName,
                         </div>
                       )}
                     </TableCell>
+                    <TableCell className="max-w-[200px]">
+                      {/* Hiển thị chi tiết hồ sơ từ documentDetails */}
+                      {transaction.documentDetails && Object.keys(transaction.documentDetails).length > 0 ? (
+                        <div className="text-sm">
+                          {Object.entries(transaction.documentDetails)
+                            .slice(0, 4)
+                            .map(([type, details], index) => (
+                              <div key={index} className="flex justify-between items-center mb-1">
+                                <span className="truncate mr-2">{type}:</span>
+                                <Badge variant="secondary" className="text-xs">
+                                  {details.quantity} {details.unit}
+                                </Badge>
+                              </div>
+                            ))}
+                          {Object.keys(transaction.documentDetails).length > 4 && (
+                            <p className="text-xs text-gray-500 italic">và còn nữa...</p>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-gray-500 text-sm">{transaction.documentType}</span>
+                      )}
+                    </TableCell>
                     <TableCell className="max-w-[150px] truncate">
                       {transaction.deliveryCompany}
                     </TableCell>
@@ -733,35 +921,101 @@ export function EnhancedDocumentList({ selectedBusinessId, selectedBusinessName,
                       })}
                     </TableCell>
                     <TableCell>
-                      {transaction.signedFilePath ? (
-                        <a 
-                          href={transaction.signedFilePath} 
-                          target="_blank" 
-                          rel="noopener noreferrer"
-                          className="text-blue-600 hover:underline text-sm"
-                        >
-                          📁 Xem PDF
-                        </a>
+                      {transaction.pdfFilePath ? (
+                        <div className="flex items-center gap-2">
+                          <a 
+                            href={`/api/documents/${transaction.id}/pdf/download`}
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="text-blue-600 hover:underline text-sm max-w-[120px] truncate"
+                            title={transaction.pdfFileName || 'PDF'}
+                          >
+                            {transaction.pdfFileName || 'PDF'}
+                          </a>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => {
+                              if (confirm('Bạn có xác nhận để xóa file PDF của giao dịch này không?')) {
+                                deletePdf.mutate(transaction.id);
+                              }
+                            }}
+                            className="h-6 w-6 p-0 text-red-500 hover:text-red-700"
+                            title="Xóa file PDF"
+                          >
+                            <X className="w-3 h-3" />
+                          </Button>
+                        </div>
                       ) : (
-                        <ObjectUploader
-                          onGetUploadParameters={async () => {
-                            const response = await fetch('/api/objects/upload', { method: 'POST' });
-                            const data = await response.json();
-                            return { method: 'PUT' as const, url: data.uploadURL };
-                          }}
-                          onComplete={(result) => {
-                            const uploadedFile = result.successful?.[0];
-                            if (uploadedFile?.uploadURL) {
-                              uploadPdf.mutate({ 
-                                id: transaction.id, 
-                                pdfPath: uploadedFile.uploadURL 
-                              });
-                            }
-                          }}
-                        >
-                          <Upload className="w-3 h-3 mr-1" />
-                          Tải PDF
-                        </ObjectUploader>
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm text-gray-500">Chưa có file</span>
+                          <div className="relative">
+                            <input
+                              type="file"
+                              accept=".pdf"
+                              disabled={uploadPdf.isPending}
+                              onChange={async (e) => {
+                                const file = e.target.files?.[0];
+                                if (!file) return;
+                                
+                                try {
+                                  // Get upload URL
+                                  const response = await fetch('/api/objects/upload', { method: 'POST' });
+                                  const data = await response.json();
+                                  
+                                  // Upload file directly
+                                  const uploadResponse = await fetch(data.uploadURL, {
+                                    method: 'PUT',
+                                    body: file,
+                                    headers: {
+                                      'Content-Type': 'application/pdf'
+                                    }
+                                  });
+                                  
+                                  if (uploadResponse.ok) {
+                                    // Update database
+                                    await uploadPdf.mutateAsync({ 
+                                      id: transaction.id, 
+                                      pdfUrl: data.uploadURL,
+                                      fileName: file.name
+                                    });
+                                    
+                                    toast({
+                                      title: "Tải lên thành công",
+                                      description: `File ${file.name} đã được tải lên`,
+                                    });
+                                  } else {
+                                    throw new Error('Upload failed');
+                                  }
+                                } catch (error) {
+                                  console.error('Upload error:', error);
+                                  toast({
+                                    title: "Tải lên thất bại",
+                                    description: "Không thể tải lên file PDF",
+                                    variant: "destructive",
+                                  });
+                                }
+                                
+                                // Reset input
+                                e.target.value = '';
+                              }}
+                              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                              id={`pdf-upload-${transaction.id}`}
+                            />
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={uploadPdf.isPending}
+                              className="h-7 px-2 text-xs"
+                              asChild
+                            >
+                              <label htmlFor={`pdf-upload-${transaction.id}`} className="cursor-pointer">
+                                <FileText className="w-3 h-3 mr-1" />
+                                Choose file
+                              </label>
+                            </Button>
+                          </div>
+                        </div>
                       )}
                     </TableCell>
                     <TableCell>
@@ -785,17 +1039,60 @@ export function EnhancedDocumentList({ selectedBusinessId, selectedBusinessName,
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => deleteTransaction.mutate(transaction.id)}
+                          onClick={() => {
+                            setDeleteTransactionId(transaction.id);
+                            setShowDeleteConfirm(true);
+                          }}
                           title="Xóa"
                         >
-                          <X className="w-4 h-4" />
+                          <Trash2 className="w-4 h-4" />
                         </Button>
                       </div>
                     </TableCell>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                  ))}
+                </TableBody>
+              </Table>
+              
+              {/* Phân trang */}
+              {totalPages > 1 && (
+                <div className="mt-6">
+                  <Pagination>
+                    <PaginationContent>
+                      <PaginationItem>
+                        <PaginationPrevious 
+                          onClick={() => currentPage > 1 && setCurrentPage(currentPage - 1)}
+                          className={currentPage <= 1 ? "pointer-events-none opacity-50" : "cursor-pointer"}
+                        />
+                      </PaginationItem>
+                      
+                      {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                        <PaginationItem key={page}>
+                          <PaginationLink
+                            onClick={() => setCurrentPage(page)}
+                            isActive={page === currentPage}
+                            className="cursor-pointer"
+                          >
+                            {page}
+                          </PaginationLink>
+                        </PaginationItem>
+                      ))}
+                      
+                      <PaginationItem>
+                        <PaginationNext 
+                          onClick={() => currentPage < totalPages && setCurrentPage(currentPage + 1)}
+                          className={currentPage >= totalPages ? "pointer-events-none opacity-50" : "cursor-pointer"}
+                        />
+                      </PaginationItem>
+                    </PaginationContent>
+                  </Pagination>
+                  
+                  <div className="text-center text-sm text-gray-500 mt-2">
+                    Hiển thị {startIndex + 1}-{Math.min(endIndex, totalTransactions)} của {totalTransactions} giao dịch
+                  </div>
+                </div>
+              )}
+            </>
           ) : (
             <div className="text-center py-12">
               <FileText className="w-12 h-12 mx-auto mb-4 opacity-50" />
@@ -822,9 +1119,27 @@ export function EnhancedDocumentList({ selectedBusinessId, selectedBusinessName,
                   <Label className="text-sm font-medium">Số văn bản</Label>
                   <p className="text-sm">{viewingTransaction.documentNumber || "Chưa có"}</p>
                 </div>
-                <div>
-                  <Label className="text-sm font-medium">Loại hồ sơ</Label>
-                  <p className="text-sm">{viewingTransaction.documentType}</p>
+                <div className="col-span-2">
+                  <Label className="text-sm font-medium">Chi tiết hồ sơ</Label>
+                  {viewingTransaction.documentDetails && Object.keys(viewingTransaction.documentDetails).length > 0 ? (
+                    <div className="mt-2 space-y-2">
+                      {Object.entries(viewingTransaction.documentDetails).map(([type, details], index) => (
+                        <div key={index} className="p-3 bg-gray-50 rounded-lg">
+                          <div className="flex justify-between items-center mb-1">
+                            <span className="font-medium text-sm">{type}</span>
+                            <Badge variant="outline" className="text-xs">
+                              {details.quantity} {details.unit}
+                            </Badge>
+                          </div>
+                          {details.notes && (
+                            <p className="text-xs text-gray-600 mt-1">{details.notes}</p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm">{viewingTransaction.documentType}</p>
+                  )}
                 </div>
                 <div>
                   <Label className="text-sm font-medium">Công ty giao</Label>
@@ -905,7 +1220,7 @@ export function EnhancedDocumentList({ selectedBusinessId, selectedBusinessName,
       <Dialog open={showForm} onOpenChange={setShowForm}>
         <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Thêm Giao Dịch Hồ Sơ (Nhiều Hồ Sơ)</DialogTitle>
+            <DialogTitle>Thêm Giao Dịch Hồ Sơ</DialogTitle>
           </DialogHeader>
           
           <Form {...form}>
@@ -948,51 +1263,107 @@ export function EnhancedDocumentList({ selectedBusinessId, selectedBusinessName,
                     type="button"
                     variant="outline"
                     size="sm"
-                    onClick={() => append({ type: "" })}
+                    onClick={() => append({ type: "", quantity: 1, unit: "bộ" })}
                   >
                     <PlusCircle className="w-4 h-4 mr-2" />
                     Thêm hồ sơ
                   </Button>
                 </div>
                 
-                {fields.map((field, index) => (
-                  <div key={field.id} className="flex items-center gap-2 p-3 border rounded-lg">
-                    <span className="font-medium text-sm w-8">#{index + 1}</span>
-                    <FormField
-                      control={form.control}
-                      name={`documents.${index}.type`}
-                      render={({ field }) => (
-                        <FormItem className="flex-1">
-                          <FormControl>
-                            <Select onValueChange={field.onChange} value={field.value}>
-                              <SelectTrigger>
-                                <SelectValue placeholder="Chọn loại hồ sơ" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {DOCUMENT_TYPES.map((type) => (
-                                  <SelectItem key={type} value={type}>
-                                    {type}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
+                {fields.map((field, index) => {
+                  const selectedTypes = form.watch("documents").map(doc => doc.type).filter(Boolean);
+                  const availableTypes = DOCUMENT_TYPES.filter(type => 
+                    !selectedTypes.includes(type) || form.watch(`documents.${index}.type`) === type
+                  );
+                  
+                  return (
+                    <div key={field.id} className="flex items-center gap-2 p-3 border rounded-lg">
+                      <span className="font-medium text-sm w-8">#{index + 1}</span>
+                      
+                      {/* Dropdown loại hồ sơ */}
+                      <FormField
+                        control={form.control}
+                        name={`documents.${index}.type`}
+                        render={({ field }) => (
+                          <FormItem className="flex-1">
+                            <FormControl>
+                              <Select onValueChange={field.onChange} value={field.value}>
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Chọn loại hồ sơ" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {availableTypes.map((type) => (
+                                    <SelectItem key={type} value={type}>
+                                      {type}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      
+                      {/* Input số lượng */}
+                      <FormField
+                        control={form.control}
+                        name={`documents.${index}.quantity`}
+                        render={({ field }) => (
+                          <FormItem className="w-20">
+                            <FormControl>
+                              <Input 
+                                type="number" 
+                                min="1"
+                                {...field}
+                                onChange={(e) => field.onChange(parseInt(e.target.value) || 1)}
+                                placeholder="SL"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      
+                      {/* Dropdown đơn vị */}
+                      <FormField
+                        control={form.control}
+                        name={`documents.${index}.unit`}
+                        render={({ field }) => (
+                          <FormItem className="w-24">
+                            <FormControl>
+                              <Select onValueChange={field.onChange} value={field.value}>
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Đơn vị" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {DOCUMENT_UNITS.map((unit) => (
+                                    <SelectItem key={unit} value={unit}>
+                                      {unit}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      
+                      {/* Nút X xóa */}
+                      {fields.length > 1 && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => remove(index)}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
                       )}
-                    />
-                    {fields.length > 1 && (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => remove(index)}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
-                    )}
-                  </div>
-                ))}
+                    </div>
+                  );
+                })}
               </div>
 
               {/* Mã số thuế và tên công ty */}
@@ -1245,6 +1616,60 @@ export function EnhancedDocumentList({ selectedBusinessId, selectedBusinessName,
               </div>
             </form>
           </Form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog xác nhận xóa giao dịch */}
+      <Dialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Xác nhận xóa giao dịch</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <p className="text-sm text-gray-600">
+              Bạn có chắc muốn xóa giao dịch này không? Hành động này không thể hoàn tác.
+            </p>
+            <div className="space-y-2">
+              <Label htmlFor="deletePassword">Nhập mật khẩu để xác nhận xóa:</Label>
+              <Input
+                id="deletePassword"
+                type="password"
+                value={deletePassword}
+                onChange={(e) => setDeletePassword(e.target.value)}
+                placeholder="Mật khẩu xác nhận"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && deletePassword) {
+                    handleDeleteConfirm();
+                  }
+                }}
+              />
+            </div>
+            {deleteTransaction.isError && (
+              <p className="text-red-500 text-sm">
+                Sai mật khẩu hoặc có lỗi xảy ra. Vui lòng thử lại.
+              </p>
+            )}
+          </div>
+          <div className="flex justify-end space-x-2">
+            <Button 
+              variant="outline" 
+              onClick={() => {
+                setShowDeleteConfirm(false);
+                setDeletePassword("");
+                setDeleteTransactionId(null);
+              }}
+              disabled={deleteTransaction.isPending}
+            >
+              Hủy
+            </Button>
+            <Button 
+              variant="destructive"
+              onClick={handleDeleteConfirm} 
+              disabled={deleteTransaction.isPending || !deletePassword}
+            > 
+              {deleteTransaction.isPending ? 'Đang xóa...' : 'Xác nhận xóa'}
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

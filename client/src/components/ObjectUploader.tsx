@@ -1,132 +1,84 @@
 import { useState } from "react";
+import type { ReactNode } from "react";
+import Uppy from "@uppy/core";
+import { DashboardModal } from "@uppy/react";
+import "@uppy/core/dist/style.min.css";
+import "@uppy/dashboard/dist/style.min.css";
+import AwsS3 from "@uppy/aws-s3";
+import type { UploadResult } from "@uppy/core";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Upload, File, X } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
 
 interface ObjectUploaderProps {
-  onUpload: (filePath: string) => void;
-  currentFile?: string;
-  disabled?: boolean;
-  accept?: string;
+  maxNumberOfFiles?: number;
+  maxFileSize?: number;
+  allowedFileTypes?: string[];
+  onGetUploadParameters: () => Promise<{
+    method: "PUT";
+    url: string;
+  }>;
+  onComplete?: (
+    result: UploadResult<Record<string, unknown>, Record<string, unknown>>
+  ) => void;
+  buttonClassName?: string;
+  children: ReactNode;
 }
 
-export function ObjectUploader({ onUpload, currentFile, disabled, accept = ".pdf" }: ObjectUploaderProps) {
-  const [uploading, setUploading] = useState(false);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const { toast } = useToast();
-
-  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      setSelectedFile(file);
-    }
-  };
-
-  const handleUpload = async () => {
-    if (!selectedFile) return;
-
-    setUploading(true);
-    try {
-      // Get upload URL
-      const uploadResponse = await fetch("/api/objects/upload", {
-        method: "POST",
-      });
-      
-      if (!uploadResponse.ok) {
-        throw new Error("Failed to get upload URL");
-      }
-      
-      const { uploadURL } = await uploadResponse.json();
-
-      // Upload file to object storage
-      const uploadFileResponse = await fetch(uploadURL, {
-        method: "PUT",
-        body: selectedFile,
-        headers: {
-          "Content-Type": selectedFile.type,
-        },
-      });
-
-      if (!uploadFileResponse.ok) {
-        throw new Error("Failed to upload file");
-      }
-
-      // Extract object path from upload URL
-      const objectPath = uploadURL.split("?")[0].replace(
-        "https://storage.googleapis.com",
-        ""
-      );
-
-      onUpload(objectPath);
-      setSelectedFile(null);
-      toast({
-        title: "Thành công",
-        description: "File đã được upload thành công",
-      });
-    } catch (error) {
-      console.error("Upload error:", error);
-      toast({
-        title: "Lỗi",
-        description: "Không thể upload file",
-        variant: "destructive",
-      });
-    } finally {
-      setUploading(false);
-    }
-  };
+/**
+ * A file upload component that renders as a button and provides a modal interface for
+ * file management.
+ * 
+ * Features:
+ * - Renders as a customizable button that opens a file upload modal
+ * - Provides a modal interface for:
+ *   - File selection
+ *   - File preview
+ *   - Upload progress tracking
+ *   - Upload status display
+ * 
+ * The component uses Uppy under the hood to handle all file upload functionality.
+ * All file management features are automatically handled by the Uppy dashboard modal.
+ */
+export function ObjectUploader({
+  maxNumberOfFiles = 1,
+  maxFileSize = 10485760, // 10MB default
+  allowedFileTypes = [".pdf"],
+  onGetUploadParameters,
+  onComplete,
+  buttonClassName,
+  children,
+}: ObjectUploaderProps) {
+  const [showModal, setShowModal] = useState(false);
+  const [uppy] = useState(() =>
+    new Uppy({
+      restrictions: {
+        maxNumberOfFiles,
+        maxFileSize,
+        allowedFileTypes,
+      },
+      autoProceed: false,
+    })
+      .use(AwsS3, {
+        shouldUseMultipart: false,
+        getUploadParameters: onGetUploadParameters,
+      })
+      .on("complete", (result) => {
+        onComplete?.(result);
+        setShowModal(false);
+      })
+  );
 
   return (
-    <div className="space-y-3">
-      <Label>Upload File PDF</Label>
-      <div className="flex items-center gap-3">
-        <Input
-          type="file"
-          accept={accept}
-          onChange={handleFileSelect}
-          disabled={disabled || uploading}
-        />
-        <Button
-          type="button"
-          onClick={handleUpload}
-          disabled={!selectedFile || uploading || disabled}
-          size="sm"
-        >
-          <Upload className="h-4 w-4 mr-2" />
-          {uploading ? "Đang tải..." : "Upload"}
-        </Button>
-      </div>
-      
-      {currentFile && (
-        <div className="flex items-center gap-2 text-sm text-green-600">
-          <File className="h-4 w-4" />
-          <span>File đã có: {currentFile.split("/").pop()}</span>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={() => window.open(`/objects${currentFile}`, "_blank")}
-          >
-            Xem file
-          </Button>
-        </div>
-      )}
-      
-      {selectedFile && (
-        <div className="flex items-center gap-2 text-sm text-blue-600">
-          <File className="h-4 w-4" />
-          <span>File chọn: {selectedFile.name}</span>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={() => setSelectedFile(null)}
-          >
-            <X className="h-4 w-4" />
-          </Button>
-        </div>
-      )}
+    <div>
+      <Button onClick={() => setShowModal(true)} className={buttonClassName} size="sm" variant="outline">
+        {children}
+      </Button>
+
+      <DashboardModal
+        uppy={uppy}
+        open={showModal}
+        onRequestClose={() => setShowModal(false)}
+        proudlyDisplayPoweredByUppy={false}
+      />
     </div>
   );
 }

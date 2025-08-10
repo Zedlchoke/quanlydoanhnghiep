@@ -53,6 +53,28 @@ export default function BusinessForm({ business, onSaved, onCancel }: BusinessFo
       password: business?.password || "",
       bankAccount: business?.bankAccount || "",
       bankName: business?.bankName || "",
+      taxAccountId: business?.taxAccountId || "",
+      taxAccountPass: business?.taxAccountPass || "",
+      invoiceLookupId: business?.invoiceLookupId || "",
+      invoiceLookupPass: business?.invoiceLookupPass || "",
+      webInvoiceWebsite: business?.webInvoiceWebsite || "",
+      webInvoiceId: business?.webInvoiceId || "",
+      webInvoicePass: business?.webInvoicePass || "",
+      socialInsuranceCode: business?.socialInsuranceCode || "",
+      socialInsuranceId: business?.socialInsuranceId || "",
+      socialInsuranceMainPass: business?.socialInsuranceMainPass || "",
+      socialInsuranceSecondaryPass: business?.socialInsuranceSecondaryPass || "",
+      tokenId: business?.tokenId || "",
+      tokenPass: business?.tokenPass || "",
+      tokenProvider: business?.tokenProvider || "",
+      tokenRegistrationDate: business?.tokenRegistrationDate || "",
+      tokenExpirationDate: business?.tokenExpirationDate || "",
+      tokenManagementLocation: business?.tokenManagementLocation || "",
+      statisticsId: business?.statisticsId || "",
+      statisticsPass: business?.statisticsPass || "",
+      auditSoftwareWebsite: business?.auditSoftwareWebsite || "",
+      auditSoftwareId: business?.auditSoftwareId || "",
+      auditSoftwarePass: business?.auditSoftwarePass || "",
       customFields: business?.customFields || {},
       notes: business?.notes || "",
     },
@@ -273,6 +295,257 @@ export default function BusinessForm({ business, onSaved, onCancel }: BusinessFo
           />
         </div>
       </div>
+
+      {/* Thông tin tài khoản cơ bản */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Thông Tin Tài Khoản Cơ Bản</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {/* Tài khoản khai thuế, nộp thuế */}
+          <div>
+            <h4 className="font-medium text-gray-900 mb-3">Tài khoản khai thuế, nộp thuế</h4>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="taxAccountId">ID</Label>
+                <Input
+                  id="taxAccountId"
+                  {...form.register("taxAccountId")}
+                  placeholder="Nhập ID tài khoản thuế"
+                />
+              </div>
+              <div>
+                <Label htmlFor="taxAccountPass">Mật khẩu</Label>
+                <Input
+                  id="taxAccountPass"
+                  type="text"
+                  {...form.register("taxAccountPass")}
+                  placeholder="Nhập mật khẩu tài khoản thuế"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Tài khoản tra cứu HĐĐT */}
+          <div>
+            <h4 className="font-medium text-gray-900 mb-3">Tài khoản tra cứu HĐĐT</h4>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="invoiceLookupId">ID</Label>
+                <Input
+                  id="invoiceLookupId"
+                  {...form.register("invoiceLookupId")}
+                  placeholder="Nhập ID tra cứu hóa đơn"
+                />
+              </div>
+              <div>
+                <Label htmlFor="invoiceLookupPass">Mật khẩu</Label>
+                <Input
+                  id="invoiceLookupPass"
+                  type="text"
+                  {...form.register("invoiceLookupPass")}
+                  placeholder="Nhập mật khẩu tra cứu hóa đơn"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Web HĐĐT */}
+          <div>
+            <h4 className="font-medium text-gray-900 mb-3">Web HĐĐT</h4>
+            <div className="grid grid-cols-1 gap-4 mb-4">
+              <div>
+                <Label htmlFor="webInvoiceWebsite">Website</Label>
+                <Input
+                  id="webInvoiceWebsite"
+                  {...form.register("webInvoiceWebsite")}
+                  placeholder="Nhập website web hóa đơn"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="webInvoiceId">ID</Label>
+                <Input
+                  id="webInvoiceId"
+                  {...form.register("webInvoiceId")}
+                  placeholder="Nhập ID web hóa đơn"
+                />
+              </div>
+              <div>
+                <Label htmlFor="webInvoicePass">Mật khẩu</Label>
+                <Input
+                  id="webInvoicePass"
+                  type="text"
+                  {...form.register("webInvoicePass")}
+                  placeholder="Nhập mật khẩu web hóa đơn"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Tài khoản bảo hiểm XH-YT */}
+          <div>
+            <h4 className="font-medium text-gray-900 mb-3">Tài khoản bảo hiểm XH-YT</h4>
+            <div className="grid grid-cols-1 gap-4 mb-4">
+              <div>
+                <Label htmlFor="socialInsuranceCode">Mã bảo hiểm</Label>
+                <Input
+                  id="socialInsuranceCode"
+                  {...form.register("socialInsuranceCode")}
+                  placeholder="Nhập mã bảo hiểm"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <Label htmlFor="socialInsuranceId">ID</Label>
+                <Input
+                  id="socialInsuranceId"
+                  {...form.register("socialInsuranceId")}
+                  placeholder="Nhập ID bảo hiểm"
+                />
+              </div>
+              <div>
+                <Label htmlFor="socialInsuranceMainPass">Pass chính</Label>
+                <Input
+                  id="socialInsuranceMainPass"
+                  type="text"
+                  {...form.register("socialInsuranceMainPass")}
+                  placeholder="Nhập mật khẩu chính"
+                />
+              </div>
+              <div>
+                <Label htmlFor="socialInsuranceSecondaryPass">Pass phụ</Label>
+                <Input
+                  id="socialInsuranceSecondaryPass"
+                  type="text"
+                  {...form.register("socialInsuranceSecondaryPass")}
+                  placeholder="Nhập mật khẩu phụ"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Tài khoản TOKEN */}
+          <div>
+            <h4 className="font-medium text-gray-900 mb-3">Tài khoản TOKEN</h4>
+            <div className="grid grid-cols-2 gap-4 mb-4">
+              <div>
+                <Label htmlFor="tokenId">ID</Label>
+                <Input
+                  id="tokenId"
+                  {...form.register("tokenId")}
+                  placeholder="Nhập ID token"
+                />
+              </div>
+              <div>
+                <Label htmlFor="tokenPass">Mật khẩu</Label>
+                <Input
+                  id="tokenPass"
+                  type="text"
+                  {...form.register("tokenPass")}
+                  placeholder="Nhập mật khẩu token"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4 mb-4">
+              <div>
+                <Label htmlFor="tokenProvider">Đơn vị cung cấp</Label>
+                <Input
+                  id="tokenProvider"
+                  {...form.register("tokenProvider")}
+                  placeholder="Nhập đơn vị cung cấp token"
+                />
+              </div>
+              <div>
+                <Label htmlFor="tokenManagementLocation">Nơi quản lý</Label>
+                <Input
+                  id="tokenManagementLocation"
+                  {...form.register("tokenManagementLocation")}
+                  placeholder="Nhập nơi quản lý token"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="tokenRegistrationDate">Ngày đăng ký</Label>
+                <Input
+                  id="tokenRegistrationDate"
+                  {...form.register("tokenRegistrationDate")}
+                  placeholder="dd/mm/yyyy"
+                />
+              </div>
+              <div>
+                <Label htmlFor="tokenExpirationDate">Ngày hết hạn</Label>
+                <Input
+                  id="tokenExpirationDate"
+                  {...form.register("tokenExpirationDate")}
+                  placeholder="dd/mm/yyyy"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Tài khoản thống kê */}
+          <div>
+            <h4 className="font-medium text-gray-900 mb-3">Tài khoản thống kê</h4>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="statisticsId">ID</Label>
+                <Input
+                  id="statisticsId"
+                  {...form.register("statisticsId")}
+                  placeholder="Nhập ID thống kê"
+                />
+              </div>
+              <div>
+                <Label htmlFor="statisticsPass">Mật khẩu</Label>
+                <Input
+                  id="statisticsPass"
+                  type="text"
+                  {...form.register("statisticsPass")}
+                  placeholder="Nhập mật khẩu thống kê"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Tài khoản phần mềm kiểm toán */}
+          <div>
+            <h4 className="font-medium text-gray-900 mb-3">Tài khoản phần mềm kiểm toán</h4>
+            <div className="grid grid-cols-1 gap-4 mb-4">
+              <div>
+                <Label htmlFor="auditSoftwareWebsite">Website</Label>
+                <Input
+                  id="auditSoftwareWebsite"
+                  {...form.register("auditSoftwareWebsite")}
+                  placeholder="Nhập website phần mềm kiểm toán"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="auditSoftwareId">ID</Label>
+                <Input
+                  id="auditSoftwareId"
+                  {...form.register("auditSoftwareId")}
+                  placeholder="Nhập ID phần mềm kiểm toán"
+                />
+              </div>
+              <div>
+                <Label htmlFor="auditSoftwarePass">Mật khẩu</Label>
+                <Input
+                  id="auditSoftwarePass"
+                  type="text"
+                  {...form.register("auditSoftwarePass")}
+                  placeholder="Nhập mật khẩu phần mềm kiểm toán"
+                />
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Custom Fields Section */}
       <Card>

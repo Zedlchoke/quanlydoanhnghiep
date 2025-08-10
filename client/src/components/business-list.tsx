@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { Building2, Edit, Trash2, X, FileText, History, ArrowUpDown, ArrowUp, ArrowDown, Key, Settings } from "lucide-react";
+import { Building2, Edit, Trash2, X, FileText, ArrowUpDown, ArrowUp, ArrowDown, Key, Settings, Eye } from "lucide-react";
 import { BusinessAccountManager } from "./BusinessAccountManager";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from "@/components/ui/pagination";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -16,7 +17,7 @@ interface BusinessListProps {
   onEdit: (business: Business) => void;
   onBusinessDeleted: () => void;
   onViewDocuments: (business: Business) => void;
-  onViewTransactionHistory: (business: Business) => void;
+
   onViewAccounts?: (business: Business) => void;
   searchResults: Business[] | null;
   onClearSearch: () => void;
@@ -35,7 +36,7 @@ export default function BusinessList({
   onEdit, 
   onBusinessDeleted,
   onViewDocuments,
-  onViewTransactionHistory,
+
   onViewAccounts,
   searchResults,
   onClearSearch,
@@ -48,6 +49,7 @@ export default function BusinessList({
   onSortChange
 }: BusinessListProps) {
   const [deleteTarget, setDeleteTarget] = useState<Business | null>(null);
+  const { toast } = useToast();
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString("vi-VN");
@@ -161,11 +163,38 @@ export default function BusinessList({
                       <TableCell>{business.industry || "-"}</TableCell>
                       <TableCell>{business.contactPerson || "-"}</TableCell>
                       <TableCell>{business.account || "-"}</TableCell>
-                      <TableCell>{business.password || "-"}</TableCell>
+                      <TableCell>
+                        {business.password ? (
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono text-sm">{business.password}</span>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                navigator.clipboard.writeText(business.password || "");
+                                toast({
+                                  title: "Đã copy",
+                                  description: "Mật khẩu đã được copy vào clipboard",
+                                });
+                              }}
+                              className="h-6 w-6 p-0"
+                            >
+                              📋
+                            </Button>
+                          </div>
+                        ) : "-"}
+                      </TableCell>
                       <TableCell>{formatDate(business.createdAt.toString())}</TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end space-x-2">
-                          <BusinessAccountManager business={business} />
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => onViewAccounts?.(business)}
+                            title="Xem thông tin doanh nghiệp"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </Button>
                           
                           <Button
                             variant="ghost"
@@ -176,14 +205,7 @@ export default function BusinessList({
                             <FileText className="w-4 h-4" />
                           </Button>
                           
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => onViewTransactionHistory(business)}
-                            title="Lịch sử giao dịch"
-                          >
-                            <History className="w-4 h-4" />
-                          </Button>
+
 
                           {isAdmin && (
                             <>

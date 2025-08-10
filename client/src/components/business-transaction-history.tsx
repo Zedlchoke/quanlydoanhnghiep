@@ -43,15 +43,23 @@ export function BusinessTransactionHistory({ business, isOpen, onClose }: Busine
   const { refetchAll } = useSyncContext();
 
   // Trực tiếp fetch transactions từ API cho business cụ thể
-  const { data: transactions = [], isLoading, refetch } = useQuery({
-    queryKey: [`/api/businesses/${business?.id}/documents`, business?.id],
+  const { data: transactions = [], isLoading, refetch } = useQuery<DocumentTransaction[]>({
+    queryKey: [`business-documents`, business?.id],
+    queryFn: async () => {
+      if (!business?.id) return [];
+      const response = await fetch(`/api/businesses/${business.id}/documents`);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch transactions: ${response.status}`);
+      }
+      return response.json();
+    },
     enabled: !!business?.id && isOpen,
     staleTime: 0, // Luôn fetch data mới
     gcTime: 0,    // Không cache
   });
 
   // Lọc transactions theo ngày tháng
-  const filteredTransactions = transactions.filter(transaction => {
+  const filteredTransactions = transactions.filter((transaction: DocumentTransaction) => {
     const transactionDate = new Date(transaction.deliveryDate);
     
     if (dateFilter.filterType === 'specific') {
@@ -119,7 +127,7 @@ export function BusinessTransactionHistory({ business, isOpen, onClose }: Busine
       console.log(`🔍 Opening transaction history for business ${business.id}: ${business.name}`);
       // Invalidate cả global cache và business-specific cache
       queryClient.invalidateQueries({ queryKey: ['/api/documents'] });
-      queryClient.invalidateQueries({ queryKey: [`/api/businesses/${business.id}/documents`] });
+      queryClient.invalidateQueries({ queryKey: ['business-documents', business.id] });
       refetch(); // Refetch ngay lập tức
       refetchAll(); // Sync toàn bộ
     }
@@ -277,7 +285,7 @@ export function BusinessTransactionHistory({ business, isOpen, onClose }: Busine
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredTransactions.map((transaction) => (
+                    {filteredTransactions.map((transaction: DocumentTransaction) => (
                       <TableRow key={transaction.id}>
                         <TableCell className="font-mono text-sm">
                           {transaction.documentNumber || "Chưa có"}

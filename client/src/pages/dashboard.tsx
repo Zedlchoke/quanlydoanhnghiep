@@ -8,11 +8,11 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import BusinessForm from "@/components/business-form";
 import SearchForm from "@/components/search-form";
 import BusinessList from "@/components/business-list";
+import BusinessViewModal from "@/components/business-view-modal";
 import { DocumentTransactionForm } from "@/components/document-transaction-form";
 import { MultiDocumentTransactionForm } from "@/components/multi-document-transaction-form";
-import { BusinessAccountManager } from "@/components/BusinessAccountManager";
 import { EnhancedDocumentList } from "@/components/enhanced-document-list";
-import { BusinessTransactionHistory } from "@/components/business-transaction-history";
+
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useAuth } from "@/hooks/use-new-auth";
 
@@ -22,14 +22,14 @@ export default function Dashboard() {
   const { user, logout } = useAuth();
   const [page, setPage] = useState(1);
   const [sortBy, setSortBy] = useState('createdAt');
-  const [sortOrder, setSortOrder] = useState('asc');
+  const [sortOrder, setSortOrder] = useState('desc');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
   const [editingBusiness, setEditingBusiness] = useState<Business | null>(null);
+  const [viewingBusiness, setViewingBusiness] = useState<Business | null>(null);
   const [searchResults, setSearchResults] = useState<Business[] | null>(null);
   const [documentBusiness, setDocumentBusiness] = useState<Business | null>(null);
-  const [transactionHistoryBusiness, setTransactionHistoryBusiness] = useState<Business | null>(null);
-  const [accountsBusiness, setAccountsBusiness] = useState<Business | null>(null);
+
 
   const { data: businessData, isLoading, refetch } = useQuery({
     queryKey: ["/api/businesses", { page, limit: 10, sortBy, sortOrder }],
@@ -196,7 +196,8 @@ export default function Dashboard() {
           onEdit={setEditingBusiness}
           onBusinessDeleted={handleBusinessDeleted}
           onViewDocuments={setDocumentBusiness}
-          onViewTransactionHistory={setTransactionHistoryBusiness}
+
+          onViewAccounts={setViewingBusiness}
           searchResults={searchResults}
           onClearSearch={clearSearch}
           currentPage={page}
@@ -254,14 +255,12 @@ export default function Dashboard() {
           />
         </div>
 
-        {/* Business Account Manager Modal */}
-        {accountsBusiness && (
-          <BusinessAccountManager
-            business={accountsBusiness}
-            isOpen={!!accountsBusiness}
-            onClose={() => setAccountsBusiness(null)}
-          />
-        )}
+        {/* Business View Modal */}
+        <BusinessViewModal
+          business={viewingBusiness}
+          isOpen={!!viewingBusiness}
+          onClose={() => setViewingBusiness(null)}
+        />
 
         {/* Document Transaction Modal (ẩn, không dùng nữa) */}
         {false && documentBusiness && (
@@ -270,12 +269,8 @@ export default function Dashboard() {
           />
         )}
 
-        {/* Business Transaction History Modal */}
-        <BusinessTransactionHistory
-          business={transactionHistoryBusiness}
-          isOpen={!!transactionHistoryBusiness}
-          onClose={() => setTransactionHistoryBusiness(null)}
-        />
+
+
       </div>
     </div>
   );

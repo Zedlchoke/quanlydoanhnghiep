@@ -12,10 +12,104 @@ export function DocumentExport({ transaction, business, onExport }: DocumentExpo
   const generateDocumentData = () => {
     const currentDate = new Date().toLocaleDateString('vi-VN');
     
+    console.log('🔍 Debug transaction data:', {
+      id: transaction.id,
+      documentType: transaction.documentType,
+      documentDetails: transaction.documentDetails,
+      hasDocumentDetails: !!(transaction.documentDetails && typeof transaction.documentDetails === 'object')
+    });
+    
+    // Generate document details table rows from documentDetails JSONB
+    let documentDetailsRows = "";
+    if (transaction.documentDetails && typeof transaction.documentDetails === 'object') {
+      let index = 1;
+      console.log('🔍 Processing documentDetails entries:', Object.entries(transaction.documentDetails));
+      Object.entries(transaction.documentDetails).forEach(([documentType, details]) => {
+        console.log(`🔍 Processing item ${index}:`, { documentType, details });
+        if (details && typeof details === 'object' && 'quantity' in details && 'unit' in details) {
+          // Capitalize first letter of unit
+          const capitalizedUnit = details.unit.charAt(0).toUpperCase() + details.unit.slice(1);
+          
+          documentDetailsRows += `
+            <tr>
+              <td style="padding: 8px; text-align: center; border: 1px solid #000;">${index}</td>
+              <td style="padding: 8px; border: 1px solid #000;">${documentType}</td>
+              <td style="padding: 8px; text-align: center; border: 1px solid #000;">${capitalizedUnit}</td>
+              <td style="padding: 8px; text-align: center; border: 1px solid #000;">${details.quantity}</td>
+              <td style="padding: 8px; text-align: center; border: 1px solid #000;">Gốc</td>
+              <td style="padding: 8px; border: 1px solid #000;">-</td>
+            </tr>
+          `;
+          index++;
+        }
+      });
+      console.log('✅ Generated documentDetailsRows:', documentDetailsRows);
+    }
+    
+    // Fallback for legacy transactions without documentDetails
+    if (!documentDetailsRows && transaction.documentType) {
+      // Parse legacy documentType if it contains summary format like "3 loại hồ sơ: 3 tờ Hồ sơ kế toán, 7 bộ Hồ sơ bảo hiểm, 3 tờ Hồ sơ pháp lý"
+      if (transaction.documentType.includes('loại hồ sơ:')) {
+        console.log('Parsing summary format:', transaction.documentType);
+        
+        // Extract the part after ":"
+        const colonIndex = transaction.documentType.indexOf(':');
+        if (colonIndex !== -1) {
+          const documentPart = transaction.documentType.substring(colonIndex + 1).trim();
+          const documentList = documentPart.split(',').map(item => item.trim());
+          
+          console.log('Document list:', documentList);
+          
+          let index = 1;
+          documentList.forEach(item => {
+            // Parse patterns like "3 tờ Hồ sơ kế toán" or "7 bộ Hồ sơ bảo hiểm"
+            const match = item.match(/^(\d+)\s+(\S+)\s+(.+)$/);
+            if (match) {
+              const quantity = match[1];
+              const unit = match[2].charAt(0).toUpperCase() + match[2].slice(1);
+              const type = match[3];
+              
+              console.log(`Parsed item ${index}:`, { quantity, unit, type });
+              
+              documentDetailsRows += `
+                <tr>
+                  <td style="padding: 8px; text-align: center; border: 1px solid #000;">${index}</td>
+                  <td style="padding: 8px; border: 1px solid #000;">${type}</td>
+                  <td style="padding: 8px; text-align: center; border: 1px solid #000;">${unit}</td>
+                  <td style="padding: 8px; text-align: center; border: 1px solid #000;">${quantity}</td>
+                  <td style="padding: 8px; text-align: center; border: 1px solid #000;">Gốc</td>
+                  <td style="padding: 8px; border: 1px solid #000;">-</td>
+                </tr>
+              `;
+              index++;
+            } else {
+              console.log('Failed to parse item:', item);
+            }
+          });
+        }
+      } else {
+        // Simple legacy format - single document type
+        documentDetailsRows = `
+          <tr>
+            <td style="padding: 8px; text-align: center; border: 1px solid #000;">1</td>
+            <td style="padding: 8px; border: 1px solid #000;">${transaction.documentType}</td>
+            <td style="padding: 8px; text-align: center; border: 1px solid #000;">Bộ</td>
+            <td style="padding: 8px; text-align: center; border: 1px solid #000;">1</td>
+            <td style="padding: 8px; text-align: center; border: 1px solid #000;">Gốc</td>
+            <td style="padding: 8px; border: 1px solid #000;">-</td>
+          </tr>
+        `;
+      }
+    }
+    
     return {
-      title: "BIÊN BẢN GIAO NHẬN HỒ SƠ",
-      companyName: "CÔNG TY TNHH TƯ VẤN & HỖ TRỢ DOANH NGHIỆP ROYAL VIỆT NAM",
+      title: "BIÊN BẢN BÀN GIAO TÀI LIỆU",
+      companyName: "ROYAL VIỆT NAM",
+      address: "Địa chỉ: Số 926, Quận Bình Thạnh, Tp HCM",
+      phone: "083.511.720-721; Fax : 083.511.7919",
+      email: "tuvanketoan@.vn - royal@tuvanketoan@.vn",
       date: currentDate,
+      documentNumber: `NGÀY: ${currentDate} - SỐ: 12313`,
       business: {
         name: business.name,
         taxId: business.taxId,
@@ -25,12 +119,17 @@ export function DocumentExport({ transaction, business, onExport }: DocumentExpo
         contactPerson: business.contactPerson,
       },
       transaction: {
-        type: transaction.transactionType === "giao" ? "GIAO HỒ SƠ" : "NHẬN HỒ SƠ",
+        type: transaction.deliveryCompany && transaction.receivingCompany ? "GIAO HỒ SƠ" : "NHẬN HỒ SƠ",
         documentType: transaction.documentType,
         handledBy: transaction.handledBy,
-        date: new Date(transaction.transactionDate).toLocaleDateString('vi-VN'),
+        date: new Date(transaction.createdAt).toLocaleDateString('vi-VN'),
         notes: transaction.notes,
-      }
+        deliveryCompany: transaction.deliveryCompany,
+        receivingCompany: transaction.receivingCompany,
+        deliveryPerson: transaction.deliveryPerson,
+        receivingPerson: transaction.receivingPerson,
+      },
+      documentDetails: documentDetailsRows
     };
   };
 
@@ -61,38 +160,68 @@ export function DocumentExport({ transaction, business, onExport }: DocumentExpo
       <body>
         <div class="header">
           <div class="company-name">${data.companyName}</div>
-          <div>Địa chỉ: [Địa chỉ công ty]</div>
-          <div>Điện thoại: [Số điện thoại công ty]</div>
+          <div>${data.address}</div>
+          <div>${data.phone}</div>
+          <div>${data.email}</div>
         </div>
 
         <div class="title">${data.title}</div>
-        <div style="text-align: center; margin-bottom: 30px;">Ngày: ${data.date}</div>
+        <div style="text-align: center; margin-bottom: 30px;">${data.documentNumber}</div>
+        
+        <div style="margin: 20px 0;">
+          Hôm nay, ngày ${data.date}, Chúng tôi gồm:
+        </div>
+        
+        <div style="margin: 10px 0;">
+          <strong>BÊN GIAO:</strong> ${data.transaction.deliveryCompany || "TNHH Tư Vấn & Hỗ Trợ Doanh Nghiệp Royal Việt Nam"} đại diện là:
+        </div>
+        <div style="margin-left: 20px;">Ông (bà): ${data.transaction.deliveryPerson || "admin"}</div>
+        
+        <div style="margin: 10px 0;">
+          <strong>BÊN NHẬN:</strong> ${data.transaction.receivingCompany || data.business.name} đại diện là:
+        </div>
+        <div style="margin-left: 20px;">Ông (bà): ${data.transaction.receivingPerson || data.business.contactPerson || "admin"}</div>
+        
+        <div style="margin: 20px 0;">
+          <strong>Thống nhất lập biên bản bàn giao nhằm tài liệu với những nội dung cụ thể như sau:</strong>
+        </div>
 
         <div class="content">
-          <h3>THÔNG TIN DOANH NGHIỆP:</h3>
-          <div class="field"><strong>Tên doanh nghiệp:</strong> ${data.business.name}</div>
-          <div class="field"><strong>Mã số thuế:</strong> ${data.business.taxId}</div>
-          <div class="field"><strong>Địa chỉ:</strong> ${data.business.address || "N/A"}</div>
-          <div class="field"><strong>Điện thoại:</strong> ${data.business.phone || "N/A"}</div>
-          <div class="field"><strong>Email:</strong> ${data.business.email || "N/A"}</div>
-          <div class="field"><strong>Người liên hệ:</strong> ${data.business.contactPerson || "N/A"}</div>
+          <h3>CHI TIẾT HỒ SƠ GIAO NHẬN:</h3>
+          <table border="1" style="width: 100%; border-collapse: collapse; margin: 20px 0;">
+            <thead>
+              <tr style="background-color: #f0f0f0;">
+                <th style="padding: 10px; text-align: center; border: 1px solid #000;">STT</th>
+                <th style="padding: 10px; text-align: center; border: 1px solid #000;">Tên tài liệu</th>
+                <th style="padding: 10px; text-align: center; border: 1px solid #000;">Đvt</th>
+                <th style="padding: 10px; text-align: center; border: 1px solid #000;">Số lượng</th>
+                <th style="padding: 10px; text-align: center; border: 1px solid #000;">Ghi chú/phụ lục</th>
+                <th style="padding: 10px; text-align: center; border: 1px solid #000;">Ghi chú</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${data.documentDetails}
+            </tbody>
+          </table>
 
-          <h3>THÔNG TIN ${data.transaction.type}:</h3>
-          <div class="field"><strong>Loại hồ sơ:</strong> ${data.transaction.documentType}</div>
-          <div class="field"><strong>Người xử lý:</strong> ${data.transaction.handledBy}</div>
-          <div class="field"><strong>Ngày ${data.transaction.type.toLowerCase()}:</strong> ${data.transaction.date}</div>
-          ${data.transaction.notes ? `<div class="field"><strong>Ghi chú:</strong> ${data.transaction.notes}</div>` : ""}
-
+          <div style="margin: 30px 0;">
+            Biên bản này được lập thành hai bản, bên giao giữ một bản, bên nhận (tại trị thành hạnh của quán, đủ chếc) giữ một bản./.
+          </div>
+          
+          <h3>PHẦN KÝ XÁC NHẬN GIAO NHẬN CỦA KHÁCH HÀNG</h3>
+          
           <div class="signature-section">
             <div class="signature-box">
-              <div><strong>ĐẠI DIỆN DOANH NGHIỆP</strong></div>
-              <div>(Ký tên, đóng dấu)</div>
-              <div class="signature-line">${data.business.contactPerson || "..........................."}</div>
+              <div><strong>ĐẠI DIỆN BÊN GIAO</strong></div>
+              <div style="margin-top: 80px; border-top: 1px solid transparent; padding-top: 10px;">
+                ${data.transaction.deliveryPerson || "admin"}
+              </div>
             </div>
             <div class="signature-box">
-              <div><strong>ĐẠI DIỆN ROYAL VIỆT NAM</strong></div>
-              <div>(Ký tên, đóng dấu)</div>
-              <div class="signature-line">${data.transaction.handledBy}</div>
+              <div><strong>ĐẠI DIỆN BÊN NHẬN</strong></div>
+              <div style="margin-top: 80px; border-top: 1px solid transparent; padding-top: 10px;">
+                ${data.transaction.receivingPerson || data.business.contactPerson || "admin"}
+              </div>
             </div>
           </div>
         </div>
@@ -105,7 +234,8 @@ export function DocumentExport({ transaction, business, onExport }: DocumentExpo
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `Bien_ban_${transaction.transactionType}_ho_so_${business.taxId}_${new Date().getTime()}.html`;
+    const transactionType = transaction.deliveryCompany && transaction.receivingCompany ? "giao" : "nhan";
+    link.download = `Bien_ban_${transactionType}_ho_so_${business.taxId}_${new Date().getTime()}.html`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);

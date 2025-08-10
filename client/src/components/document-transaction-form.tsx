@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Calendar, Plus, FileText, X, Download, Edit2, Eye, Upload, FileUp } from "lucide-react";
+import { Calendar, Plus, FileText, X, Download, Edit2, Eye, Upload, FileUp, ArrowRight, ArrowLeft, Folder } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -29,13 +29,30 @@ const COMPANY_OPTIONS = [
 
 const DOCUMENT_TYPES = [
   "Hồ sơ thành lập doanh nghiệp",
-  "Hồ sơ thay đổi đăng ký kinh doanh",
+  "Hồ sơ thay đổi đăng ký kinh doanh", 
   "Hồ sơ giải thể doanh nghiệp",
   "Hồ sơ thuế",
-  "Hồ sơ BHXH",
+  "Hồ sơ BHXH", 
   "Hồ sơ lao động",
+  "Hồ sơ pháp lý",
+  "Hồ sơ kế toán", 
+  "Hồ sơ bảo hiểm",
   "Hồ sơ khác",
 ];
+
+const DOCUMENT_UNITS = [
+  "Tờ",
+  "Bộ", 
+  "Quyển",
+  "Cuốn",
+];
+
+interface DocumentDetail {
+  type: string;
+  quantity: number;
+  unit: string;
+  notes: string;
+}
 
 export function DocumentTransactionForm({ business }: DocumentTransactionFormProps) {
   const { toast } = useToast();
@@ -46,6 +63,9 @@ export function DocumentTransactionForm({ business }: DocumentTransactionFormPro
   const [editingDocumentNumber, setEditingDocumentNumber] = useState<number | null>(null);
   const [newDocumentNumber, setNewDocumentNumber] = useState("");
   const [viewingTransaction, setViewingTransaction] = useState<DocumentTransaction | null>(null);
+  const [documentItems, setDocumentItems] = useState<DocumentDetail[]>([
+    { type: "", quantity: 1, unit: "Tờ", notes: "" }
+  ]);
 
   // Lấy danh sách doanh nghiệp để làm dropdown cho công ty giao/nhận - cập nhật thời gian thực
   const { data: businessesData } = useQuery({
@@ -86,8 +106,7 @@ export function DocumentTransactionForm({ business }: DocumentTransactionFormPro
       businessId: business.id,
       documentNumber: "",
       documentType: "Hồ sơ khác",
-      documentTypes: [],
-      documentCounts: {},
+      documentDetails: {},
       deliveryCompany: "",
       receivingCompany: business.name || "", // Tự động điền tên công ty nhận
       deliveryPerson: "",
@@ -124,8 +143,7 @@ export function DocumentTransactionForm({ business }: DocumentTransactionFormPro
         businessId: business.id,
         documentNumber: "",
         documentType: "Hồ sơ khác",
-        documentTypes: [],
-        documentCounts: {},
+        documentDetails: {},
         deliveryCompany: "",
         receivingCompany: business.name || "",
         deliveryPerson: "",
@@ -139,6 +157,7 @@ export function DocumentTransactionForm({ business }: DocumentTransactionFormPro
       });
       queryClient.invalidateQueries({ queryKey: [`/api/businesses/${business.id}/documents`] });
       refetchAll(); // Đồng bộ lại toàn bộ dữ liệu ngay lập tức
+      setDocumentItems([{ type: "", quantity: 1, unit: "Tờ", notes: "" }]); // Reset document items
       setShowForm(false);
     },
     onError: (error) => {
@@ -157,10 +176,12 @@ export function DocumentTransactionForm({ business }: DocumentTransactionFormPro
 
   const deleteTransaction = useMutation({
     mutationFn: async ({ id, password }: { id: number; password: string }) => {
+      const token = localStorage.getItem('authToken');
       const response = await fetch(`/api/documents/${id}`, {
         method: "DELETE",
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
         },
         body: JSON.stringify({ password }),
       });
@@ -253,11 +274,34 @@ export function DocumentTransactionForm({ business }: DocumentTransactionFormPro
     // Tự động set thời gian hiện tại nếu để trống
     const currentDateTime = new Date().toISOString().slice(0, 16); // Format: YYYY-MM-DDTHH:mm
     
+    // Tạo documentDetails từ documentItems
+    const documentDetails: Record<string, {quantity: number, unit: string, notes?: string}> = {};
+    documentItems.forEach(item => {
+      if (item.type.trim()) {
+        documentDetails[item.type] = {
+          quantity: item.quantity,
+          unit: item.unit,
+          notes: item.notes || ""
+        };
+      }
+    });
+
+    // Tạo documentType summary 
+    const documentCount = Object.keys(documentDetails).length;
+    const summaryParts = Object.entries(documentDetails).map(([type, details]) => 
+      `${details.quantity} ${details.unit} ${type}`);
+    const documentSummary = `${documentCount} loại hồ sơ: ${summaryParts.join(", ")}`;
+    
     const submissionData = {
       ...data,
+      documentType: documentSummary,
+      documentDetails: documentDetails,
       deliveryDate: data.deliveryDate || currentDateTime,
       receivingDate: data.receivingDate || currentDateTime,
     };
+    
+    console.log('🚀 Submitting transaction data:', submissionData);
+    console.log('🔍 documentDetails structure:', JSON.stringify(submissionData.documentDetails, null, 2));
     
     createTransaction.mutate(submissionData);
   };
@@ -309,15 +353,26 @@ export function DocumentTransactionForm({ business }: DocumentTransactionFormPro
         <table class="table">
             <thead>
                 <tr>
-                    <th>Stt</th>
+                    <th>STT</th>
                     <th>Tên tài liệu</th>
-                    <th>Đvt</th>
+                    <th>ĐVT</th>
                     <th>Số lượng</th>
                     <th>Góc/photo</th>
                     <th>Ghi chú</th>
                 </tr>
             </thead>
             <tbody>
+                ${Object.entries(transaction.documentDetails || {}).map(([docType, details], index) => `
+                <tr>
+                    <td>${index + 1}</td>
+                    <td>${docType}</td>
+                    <td>${details.unit || 'Tờ'}</td>
+                    <td>${details.quantity || 1}</td>
+                    <td>Góc</td>
+                    <td>${details.notes || transaction.notes || '-'}</td>
+                </tr>
+                `).join('')}
+                ${Object.keys(transaction.documentDetails || {}).length === 0 ? `
                 <tr>
                     <td>1</td>
                     <td>${transaction.documentType}</td>
@@ -326,6 +381,7 @@ export function DocumentTransactionForm({ business }: DocumentTransactionFormPro
                     <td>Góc</td>
                     <td>${transaction.notes || '-'}</td>
                 </tr>
+                ` : ''}
             </tbody>
         </table>
         
@@ -485,29 +541,59 @@ export function DocumentTransactionForm({ business }: DocumentTransactionFormPro
                     </TableCell>
                     <TableCell>
                       {transaction.signedFilePath ? (
-                        <a 
-                          href={transaction.signedFilePath} 
-                          target="_blank" 
-                          rel="noopener noreferrer"
-                          className="text-blue-600 hover:underline"
-                        >
-                          📁 Xem PDF
-                        </a>
+                        <div className="flex items-center gap-2">
+                          <span className="text-green-600 text-sm">Đã có file</span>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => window.open(`/objects${transaction.signedFilePath}`, "_blank")}
+                          >
+                            <FileText className="w-4 h-4 mr-1" />
+                            Download PDF
+                          </Button>
+                        </div>
                       ) : (
-                        <ObjectUploader
-                          onUpload={(filePath) => {
-                            // Handle the uploaded file path
-                            const normalizedPath = filePath.replace('/repl-objstore-e29301a3-0a49-4344-847f-f8abc5fd8739/', '/uploads/');
-                            fetch(`/api/documents/${transaction.id}/upload-pdf`, {
-                              method: 'PUT',
-                              headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({ pdfPath: normalizedPath })
-                            }).then(() => {
-                              refetch();
-                              refetchAll();
-                            });
-                          }}
-                        />
+                        <div className="flex items-center gap-2">
+                          <span className="text-gray-500 text-sm">Chưa</span>
+                          <ObjectUploader
+                            maxNumberOfFiles={1}
+                            maxFileSize={10485760}
+                            onGetUploadParameters={async () => {
+                              const token = localStorage.getItem('authToken');
+                              const response = await fetch('/api/objects/upload', {
+                                method: 'POST',
+                                headers: {
+                                  'Content-Type': 'application/json',
+                                  'Authorization': `Bearer ${token}`,
+                                }
+                              });
+                              const data = await response.json();
+                              return { method: 'PUT' as const, url: data.uploadURL };
+                            }}
+                            onComplete={(result) => {
+                              // Handle the uploaded file using the upload URL
+                              if (result.successful && result.successful.length > 0) {
+                                const uploadURL = result.successful[0].uploadURL;
+                                fetch(`/api/documents/${transaction.id}/upload-pdf`, {
+                                  method: 'PUT',
+                                  headers: { 
+                                    'Content-Type': 'application/json',
+                                    'Authorization': `Bearer ${localStorage.getItem('authToken')}`,
+                                  },
+                                  body: JSON.stringify({ pdfPath: uploadURL })
+                                }).then(() => {
+                                  refetch();
+                                  refetchAll();
+                                });
+                              }
+                            }}
+                          >
+                            <div className="flex items-center gap-1">
+                              <Upload className="w-3 h-3" />
+                              <span className="text-xs">Choose file</span>
+                            </div>
+                          </ObjectUploader>
+                        </div>
                       )}
                     </TableCell>
                     <TableCell>
@@ -648,156 +734,301 @@ export function DocumentTransactionForm({ business }: DocumentTransactionFormPro
       </Dialog>
 
       <Dialog open={showForm} onOpenChange={setShowForm}>
-        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+        <DialogContent className="max-w-5xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="text-center text-xl font-bold">
-              BIÊN BẢN GIAO NHẬN HỒ SƠ
+            <DialogTitle className="text-center text-2xl font-bold text-purple-700 mb-2">
+              Thêm Giao Dịch Hồ Sơ
             </DialogTitle>
+            <p className="text-center text-gray-600 text-sm">
+              Tạo giao dịch mới cho việc bàn giao hồ sơ tài liệu
+            </p>
           </DialogHeader>
 
           <form onSubmit={form.handleSubmit((data: InsertDocumentTransaction) => {
-            console.log("✅ Form data:", data);
-            createTransaction.mutate(data);
+            // Tạo documentDetails từ documentItems
+            const documentDetails: Record<string, {quantity: number, unit: string, notes?: string}> = {};
+            const validItems = documentItems.filter(item => item.type && item.quantity > 0);
+            
+            for (const item of validItems) {
+              documentDetails[item.type] = {
+                quantity: item.quantity,
+                unit: item.unit,
+                notes: item.notes || undefined
+              };
+            }
+            
+            // Lấy loại hồ sơ chính (loại đầu tiên hoặc loại có số lượng lớn nhất)
+            const primaryDocType = validItems.length > 0 
+              ? validItems.sort((a, b) => b.quantity - a.quantity)[0].type
+              : "Hồ sơ khác";
+            
+            const finalData = {
+              ...data,
+              documentType: primaryDocType,
+              documentDetails
+            };
+            
+            console.log("✅ Form data:", finalData);
+            createTransaction.mutate(finalData);
           })} className="space-y-6">
-            {/* Header thông tin chung */}
-            <div className="bg-gray-50 p-4 rounded-lg">
-              <div>
-                <Label htmlFor="documentNumber">Số văn bản</Label>
-                <Input
-                  id="documentNumber"
-                  {...form.register("documentNumber")}
-                  placeholder="VD: AG-001/2024"
-                />
+            
+            {/* Form Grid Layout */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              
+              {/* Left Column */}
+              <div className="space-y-6">
+                {/* Thông tin cơ bản */}
+                <div className="bg-gradient-to-br from-blue-50 to-purple-50 p-5 rounded-xl border border-blue-200">
+                  <h3 className="text-lg font-semibold text-blue-800 mb-4 flex items-center">
+                    <FileText className="w-5 h-5 mr-2" />
+                    Thông tin cơ bản
+                  </h3>
+                  <div>
+                    <Label htmlFor="documentNumber" className="text-sm font-medium text-gray-700">
+                      Số văn bản *
+                    </Label>
+                    <Input
+                      id="documentNumber"
+                      {...form.register("documentNumber")}
+                      placeholder="VD: AG-001/2024"
+                      className="mt-1 h-11 border-blue-300 focus:border-blue-500 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+
+                {/* Bên giao */}
+                <div className="bg-gradient-to-br from-green-50 to-emerald-50 p-5 rounded-xl border border-green-200">
+                  <h3 className="text-lg font-semibold text-green-800 mb-4 flex items-center">
+                    <ArrowRight className="w-5 h-5 mr-2" />
+                    Bên Giao
+                  </h3>
+                  <div className="space-y-4">
+                    <div>
+                      <Label className="text-sm font-medium text-gray-700">Công ty/Tổ chức *</Label>
+                      <Select
+                        value={form.watch("deliveryCompany")}
+                        onValueChange={(value) => form.setValue("deliveryCompany", value)}
+                      >
+                        <SelectTrigger className="mt-1 h-11 border-green-300 focus:border-green-500">
+                          <SelectValue placeholder="Chọn công ty giao" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {allCompanyOptions.map((company) => (
+                            <SelectItem key={company} value={company}>
+                              {company}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium text-gray-700">Người đại diện</Label>
+                      <Input
+                        {...form.register("deliveryPerson")}
+                        placeholder="Họ và tên người giao"
+                        className="mt-1 h-11 border-green-300 focus:border-green-500"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium text-gray-700">Ngày và giờ giao</Label>
+                      <Input
+                        type="datetime-local"
+                        {...form.register("deliveryDate")}
+                        className="mt-1 h-11 border-green-300 focus:border-green-500"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">
+                        Để trống sẽ tự động lấy thời điểm hiện tại
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Right Column */}
+              <div className="space-y-6">
+                {/* Danh sách hồ sơ */}
+                <div className="bg-gradient-to-br from-purple-50 to-pink-50 p-5 rounded-xl border border-purple-200">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-semibold text-purple-800 flex items-center">
+                      <Folder className="w-5 h-5 mr-2" />
+                      Danh sách hồ sơ
+                    </h3>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setDocumentItems([...documentItems, { type: "", quantity: 1, unit: "Tờ", notes: "" }]);
+                      }}
+                      className="text-purple-600 border-purple-300 hover:bg-purple-100 h-9"
+                    >
+                      <Plus className="w-4 h-4 mr-1" />
+                      Thêm hồ sơ
+                    </Button>
+                  </div>
+                  
+                  <div className="space-y-3 max-h-48 overflow-y-auto">
+                    {documentItems.map((item, index) => (
+                      <div key={index} className="flex items-center gap-2 p-3 bg-white rounded-lg border border-purple-200 shadow-sm">
+                        <div className="flex-1">
+                          <Select
+                            value={item.type}
+                            onValueChange={(value) => {
+                              const newItems = [...documentItems];
+                              newItems[index].type = value;
+                              setDocumentItems(newItems);
+                            }}
+                          >
+                            <SelectTrigger className="h-10 border-purple-300 focus:border-purple-500">
+                              <SelectValue placeholder="Chọn loại hồ sơ" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {DOCUMENT_TYPES
+                                .filter(type => !documentItems.some((di, i) => i !== index && di.type === type))
+                                .map((type) => (
+                                  <SelectItem key={type} value={type}>
+                                    {type}
+                                  </SelectItem>
+                                ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        
+                        <div className="w-20">
+                          <Input
+                            type="number" 
+                            min={1}
+                            value={item.quantity}
+                            onChange={(e) => {
+                              const newItems = [...documentItems];
+                              newItems[index].quantity = parseInt(e.target.value) || 1;
+                              setDocumentItems(newItems);
+                            }}
+                            className="h-10 border-purple-300 focus:border-purple-500 text-center"
+                            placeholder="SL"
+                          />
+                        </div>
+                        
+                        <div className="w-20">
+                          <Select
+                            value={item.unit}
+                            onValueChange={(value) => {
+                              const newItems = [...documentItems];
+                              newItems[index].unit = value;
+                              setDocumentItems(newItems);
+                            }}
+                          >
+                            <SelectTrigger className="h-10 border-purple-300 focus:border-purple-500">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {DOCUMENT_UNITS.map((unit) => (
+                                <SelectItem key={unit} value={unit}>
+                                  {unit}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        
+                        {documentItems.length > 1 && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              const newItems = documentItems.filter((_, i) => i !== index);
+                              setDocumentItems(newItems);
+                            }}
+                            className="h-10 w-10 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Bên nhận */}
+                <div className="bg-gradient-to-br from-orange-50 to-amber-50 p-5 rounded-xl border border-orange-200">
+                  <h3 className="text-lg font-semibold text-orange-800 mb-4 flex items-center">
+                    <ArrowLeft className="w-5 h-5 mr-2" />
+                    Bên Nhận
+                  </h3>
+                  <div className="space-y-4">
+                    <div>
+                      <Label className="text-sm font-medium text-gray-700">Công ty/Tổ chức *</Label>
+                      <Select
+                        value={form.watch("receivingCompany")}
+                        onValueChange={(value) => form.setValue("receivingCompany", value)}
+                      >
+                        <SelectTrigger className="mt-1 h-11 border-orange-300 focus:border-orange-500">
+                          <SelectValue placeholder="Chọn công ty nhận" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {allCompanyOptions.map((company) => (
+                            <SelectItem key={company} value={company}>
+                              {company}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium text-gray-700">Người đại diện</Label>
+                      <Input
+                        {...form.register("receivingPerson")}
+                        placeholder="Họ và tên người nhận"
+                        className="mt-1 h-11 border-orange-300 focus:border-orange-500"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium text-gray-700">Ngày nhận</Label>
+                      <Input
+                        type="datetime-local"
+                        {...form.register("receivingDate")}
+                        className="mt-1 h-11 border-orange-300 focus:border-orange-500"
+                      />
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
 
-            {/* Thông tin loại hồ sơ */}
-            <div>
-              <Label htmlFor="documentType">Loại hồ sơ *</Label>
-              <Select
-                value={form.watch("documentType")}
-                onValueChange={(value) => form.setValue("documentType", value)}
+            {/* Ghi chú */}
+            <div className="bg-gradient-to-br from-gray-50 to-gray-100 p-5 rounded-xl border border-gray-300">
+              <h3 className="text-lg font-semibold text-gray-700 mb-4 flex items-center">
+                <FileText className="w-5 h-5 mr-2" />
+                Ghi chú bổ sung
+              </h3>
+              <Textarea
+                {...form.register("notes")}
+                placeholder="Nhập ghi chú về giao dịch này (nếu có)..."
+                className="min-h-20 border-gray-300 focus:border-gray-500 resize-none"
+              />
+              <p className="text-xs text-gray-500 mt-2">
+                Ghi chú sẽ được hiển thị trong biên bản bàn giao tự động
+              </p>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex justify-end gap-4 pt-4 border-t border-gray-200">
+              <Button 
+                type="button" 
+                variant="outline" 
+                onClick={() => setShowForm(false)}
+                className="px-6 py-3 h-12"
               >
-                <SelectTrigger>
-                  <SelectValue placeholder="Chọn loại hồ sơ" />
-                </SelectTrigger>
-                <SelectContent>
-                  {DOCUMENT_TYPES.map((type) => (
-                    <SelectItem key={type} value={type}>
-                      {type}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {form.formState.errors.documentType && (
-                <p className="text-sm text-red-600 mt-1">
-                  {form.formState.errors.documentType.message}
-                </p>
-              )}
-            </div>
-
-            {/* Thông tin bên giao */}
-            <div className="border border-gray-200 rounded-lg p-4">
-              <h4 className="font-semibold mb-3 text-blue-700">Bên Giao</h4>
-              <div className="grid grid-cols-1 gap-4">
-                <div>
-                  <Label htmlFor="deliveryCompany">Công ty/Tổ chức *</Label>
-                  <Select
-                    value={form.watch("deliveryCompany")}
-                    onValueChange={(value) => form.setValue("deliveryCompany", value)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Chọn công ty giao" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {allCompanyOptions.map((company) => (
-                        <SelectItem key={company} value={company}>
-                          {company}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {form.formState.errors.deliveryCompany && (
-                    <p className="text-sm text-red-600 mt-1">
-                      {form.formState.errors.deliveryCompany.message}
-                    </p>
-                  )}
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="deliveryPerson">Người đại diện giao</Label>
-                    <Input
-                      id="deliveryPerson"
-                      {...form.register("deliveryPerson")}
-                      placeholder="Họ và tên người giao"
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="deliveryDate">Ngày và giờ giao</Label>
-                    <Input
-                      id="deliveryDate"
-                      type="datetime-local"
-                      {...form.register("deliveryDate")}
-                      placeholder="Để trống sẽ lấy thời điểm hiện tại"
-                    />
-                    <p className="text-xs text-gray-500 mt-1">
-                      Để trống sẽ tự động lấy thời điểm hiện tại
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Thông tin bên nhận */}
-            <div className="border border-gray-200 rounded-lg p-4">
-              <h4 className="font-semibold mb-3 text-green-700">Bên Nhận</h4>
-              <div className="grid grid-cols-1 gap-4">
-                <div>
-                  <Label htmlFor="receivingCompany">Công ty/Tổ chức *</Label>
-                  <Select
-                    value={form.watch("receivingCompany")}
-                    onValueChange={(value) => form.setValue("receivingCompany", value)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Chọn công ty nhận" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {allCompanyOptions.map((company) => (
-                        <SelectItem key={company} value={company}>
-                          {company}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {form.formState.errors.receivingCompany && (
-                    <p className="text-sm text-red-600 mt-1">
-                      {form.formState.errors.receivingCompany.message}
-                    </p>
-                  )}
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="receivingPerson">Người đại diện nhận</Label>
-                    <Input
-                      id="receivingPerson"
-                      {...form.register("receivingPerson")}
-                      placeholder="Họ và tên người nhận"
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="receivingDate">Ngày và giờ nhận</Label>
-                    <Input
-                      id="receivingDate"
-                      type="datetime-local"
-                      {...form.register("receivingDate")}
-                      placeholder="Để trống sẽ lấy thời điểm hiện tại"
-                    />
-                    <p className="text-xs text-gray-500 mt-1">
-                      Để trống sẽ tự động lấy thời điểm hiện tại
-                    </p>
-                  </div>
-                </div>
-              </div>
+                Hủy bỏ
+              </Button>
+              <Button 
+                type="submit" 
+                disabled={createTransaction.isPending}
+                className="px-8 py-3 h-12 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white font-semibold"
+              >
+                {createTransaction.isPending ? "Đang xử lý..." : "Tạo giao dịch"}
+              </Button>
             </div>
 
             {/* Người xử lý và ghi chú */}
@@ -849,39 +1080,54 @@ export function DocumentTransactionForm({ business }: DocumentTransactionFormPro
 
       {/* Delete Confirmation Dialog */}
       <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
             <DialogTitle>Xác nhận xóa giao dịch</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4">
+          <div className="space-y-4 py-4">
             <p className="text-sm text-muted-foreground">
-              Để xóa giao dịch này, vui lòng nhập mật khẩu xóa:
+              Bạn có xác nhận để xóa giao dịch này không? Vui lòng nhập mật khẩu để xác nhận:
             </p>
-            <Input
-              type="password"
-              placeholder="Nhập mật khẩu xóa"
-              value={deletePassword}
-              onChange={(e) => setDeletePassword(e.target.value)}
-            />
-            <div className="flex justify-end space-x-2">
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setDeleteDialogOpen(false);
-                  setDeletePassword("");
-                  setDeleteTransactionId(null);
+            <div>
+              <Label htmlFor="deletePassword" className="text-sm font-medium">
+                Mật khẩu xóa (4 số: 0102):
+              </Label>
+              <Input
+                id="deletePassword"
+                type="password"
+                placeholder="Nhập mật khẩu 4 số"
+                value={deletePassword}
+                onChange={(e) => setDeletePassword(e.target.value)}
+                maxLength={4}
+                autoFocus
+                className="mt-2"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && deletePassword.trim()) {
+                    handleDeleteConfirm();
+                  }
                 }}
-              >
-                Hủy
-              </Button>
-              <Button
-                variant="destructive"
-                onClick={handleDeleteConfirm}
-                disabled={!deletePassword || deleteTransaction.isPending}
-              >
-                {deleteTransaction.isPending ? "Đang xóa..." : "Xóa"}
-              </Button>
+              />
             </div>
+          </div>
+          <div className="flex justify-end space-x-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setDeleteDialogOpen(false);
+                setDeletePassword("");
+                setDeleteTransactionId(null);
+              }}
+              disabled={deleteTransaction.isPending}
+            >
+              Hủy
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteConfirm}
+              disabled={!deletePassword.trim() || deleteTransaction.isPending}
+            >
+              {deleteTransaction.isPending ? "Đang xóa..." : "Xóa"}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
