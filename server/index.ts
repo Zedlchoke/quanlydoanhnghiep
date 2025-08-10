@@ -4,6 +4,10 @@ import { setupVite, serveStatic, log } from "./vite";
 import { storage } from "./storage";
 import { errorHandler, requestLogger, timeoutHandler, bodyParserErrorHandler } from "./middleware";
 
+// Production deployment fix - August 10, 2025 14:20 - Force redeploy with fixed APIs
+// CRITICAL FIX: Production missing getAllBusinessesForAutocomplete() + getAllDocumentTransactions()
+// This change triggers Render to rebuild with latest code containing all required methods
+
 const app = express();
 
 // Trust proxy for deployment platforms
@@ -102,3 +106,4 @@ app.use((req, res, next) => {
     log(`serving on port ${port}`);
   });
 })();
+// Force deployment trigger Sun Aug 10 02:09:09 PM UTC 2025

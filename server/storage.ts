@@ -51,6 +51,15 @@ export interface IStorage {
   getBusinessByTaxId(taxId: string): Promise<Business | undefined>;
   updateBusinessAccessCode(id: number, accessCode: string): Promise<boolean>;
   
+  // Document transaction enhanced operations
+  getDocumentTransactionsByCompany(companyName: string): Promise<DocumentTransaction[]>;
+  getDocumentTransactionsByTaxId(taxId: string): Promise<DocumentTransaction[]>;
+  updateDocumentNumber(id: number, documentNumber: string): Promise<boolean>;
+  updateSignedFilePath(id: number, signedFilePath: string): Promise<boolean>;
+  updateDocumentTransactionPdf(id: number, pdfFilePath: string | null, pdfFileName: string | null): Promise<boolean>;
+  updateDocumentTransactionSignedFile(id: number, signedFilePath: string): Promise<boolean>;
+  getDocumentTransaction(id: number): Promise<DocumentTransaction | undefined>;
+  
   // Business Account methods
   getBusinessAccount(businessId: number): Promise<BusinessAccount | null>;
   getBusinessAccountByBusinessId(businessId: number): Promise<BusinessAccount | null>;
@@ -217,11 +226,16 @@ export class DatabaseStorage implements IStorage {
 
   // Document transaction operations
   async createDocumentTransaction(transaction: InsertDocumentTransaction): Promise<DocumentTransaction> {
-    const [createdTransaction] = await db
-      .insert(documentTransactions)
-      .values(transaction)
-      .returning();
-    return createdTransaction;
+    try {
+      const [createdTransaction] = await db
+        .insert(documentTransactions)
+        .values(transaction)
+        .returning();
+      return createdTransaction;
+    } catch (error) {
+      console.error("Error creating document transaction:", error);
+      throw error;
+    }
   }
 
   async getDocumentTransactionsByBusinessId(businessId: number): Promise<DocumentTransaction[]> {
@@ -569,8 +583,32 @@ export class DatabaseStorage implements IStorage {
     }
   }
 
+  // Additional methods for complete sync
+  async getDocumentTransactionsByTaxId(taxId: string): Promise<DocumentTransaction[]> {
+    try {
+      const business = await this.getBusinessByTaxId(taxId);
+      if (!business) {
+        return [];
+      }
+      return await this.getDocumentTransactionsByBusinessId(business.id);
+    } catch (error) {
+      console.error("Error fetching document transactions by tax ID:", error);
+      return [];
+    }
+  }
 
-
+  async getDocumentTransaction(id: number): Promise<DocumentTransaction | undefined> {
+    try {
+      const [transaction] = await db
+        .select()
+        .from(documentTransactions)
+        .where(eq(documentTransactions.id, id));
+      return transaction || undefined;
+    } catch (error) {
+      console.error("Error fetching document transaction:", error);
+      return undefined;
+    }
+  }
 
 }
 

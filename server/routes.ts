@@ -48,6 +48,50 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Production debug endpoint
+  app.get("/api/debug", async (req, res) => {
+    try {
+      // Check storage methods availability
+      const storageCheck = {
+        getAllBusinessesForAutocomplete: typeof storage.getAllBusinessesForAutocomplete === 'function',
+        getAllDocumentTransactions: typeof storage.getAllDocumentTransactions === 'function',
+        createBusiness: typeof storage.createBusiness === 'function',
+        getBusinessById: typeof storage.getBusinessById === 'function'
+      };
+      
+      // Try to get data count
+      let dataCount: { businesses: number; transactions: number; error: string | null } = { businesses: 0, transactions: 0, error: null };
+      try {
+        if (storage.getAllBusinessesForAutocomplete) {
+          const businesses = await storage.getAllBusinessesForAutocomplete();
+          dataCount.businesses = businesses.length;
+        }
+        if (storage.getAllDocumentTransactions) {
+          const transactions = await storage.getAllDocumentTransactions();
+          dataCount.transactions = transactions.length;
+        }
+      } catch (error) {
+        dataCount.error = error instanceof Error ? error.message : String(error);
+      }
+      
+      res.json({
+        status: "debug_info",
+        timestamp: new Date().toISOString(),
+        storage_methods: storageCheck,
+        data_count: dataCount,
+        node_env: process.env.NODE_ENV,
+        deployment: "production"
+      });
+    } catch (error) {
+      console.error('Debug check failed:', error);
+      res.status(500).json({ 
+        status: "debug_error", 
+        message: error instanceof Error ? error.message : String(error),
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+
   // Database initialization endpoint
   app.post("/api/initialize-db", async (req, res) => {
     try {
@@ -920,15 +964,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Get document transactions by tax ID (chỉ hiển thị giao dịch liên quan đến doanh nghiệp có mã số thuế này)
-  app.get("/api/documents/tax-id/:taxId", async (req, res) => {
+  // PDF upload endpoint for document transactions
+  app.post("/api/documents/pdf-upload", async (req, res) => {
     try {
-      const taxId = req.params.taxId;
-      const transactions = await storage.getDocumentTransactionsByTaxId(taxId);
-      res.json(transactions);
+      const objectStorageService = new ObjectStorageService();
+      const uploadURL = await objectStorageService.getObjectEntityUploadURL();
+      res.json({ uploadURL });
     } catch (error) {
-      console.error("Error fetching document transactions by tax ID:", error);
-      res.status(500).json({ message: "Lỗi khi tải danh sách giao dịch hồ sơ theo mã số thuế" });
+      console.error("Error getting PDF upload URL:", error);
+      res.status(500).json({ message: "Lỗi khi tạo URL tải lên PDF" });
+    }
+  });
+
+  // Delete PDF from document transaction
+  app.delete("/api/documents/:id/pdf", async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const success = await storage.updateDocumentTransactionPdf(id, null, null);
+      if (!success) {
+        return res.status(404).json({ message: "Không tìm thấy giao dịch hồ sơ" });
+      }
+      res.json({ message: "Xóa PDF thành công" });
+    } catch (error) {
+      console.error("Error deleting PDF:", error);
+      res.status(500).json({ message: "Lỗi khi xóa PDF" });
     }
   });
 
