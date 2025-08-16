@@ -1,0 +1,31 @@
+# Replit Deployment Configuration
+version: 2
+
+# Build configuration
+build:
+  main: server/index.ts
+  run: npm run dev
+
+# Deployment settings
+deployment:
+  environment: production
+  
+# Environment variables
+env:
+  NODE_ENV: production
+  PORT: 5000
+
+# Health check endpoint
+health_check:
+  path: /api/health
+  port: 5000
+  
+# Static files
+static:
+  outdir: dist
+  
+# Auto-scale settings  
+autoscale:
+  min_replicas: 1
+  max_replicas: 3
+  target_cpu: 70
