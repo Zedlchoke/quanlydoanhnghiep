@@ -1,23 +1,22 @@
 services:
   - type: web
-    name: long-quan-business-management
+    name: royal-vietnam-website
     env: node
+    region: oregon
     plan: free
-    buildCommand: npm install && npm run build
-    startCommand: npm start
-    healthCheckPath: /api/health
+    buildCommand: npm ci && npm run build
+    startCommand: npm run start
     envVars:
       - key: NODE_ENV
         value: production
       - key: DATABASE_URL
         fromDatabase:
-          name: long-quan-db
+          name: royal-vietnam-db
           property: connectionString
-      - key: PORT
-        value: 10000
 
 databases:
-  - name: long-quan-db
-    databaseName: long_quan_business
-    user: long_quan_user
+  - name: royal-vietnam-db
+    databaseName: royal_vietnam
+    user: royalvn_user
+    region: oregon
     plan: free

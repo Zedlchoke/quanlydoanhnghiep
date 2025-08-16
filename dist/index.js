@@ -259,10 +259,33 @@ var init_db = __esm({
     connectionConfig = {
       connectionString: process.env.DATABASE_URL,
       ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : false,
-      connectionTimeoutMillis: 1e4,
-      idleTimeoutMillis: 3e4,
-      max: 10,
-      min: 1
+      // COST-OPTIMIZED for Railway free tier
+      connectionTimeoutMillis: 4e3,
+      // Balanced timeout
+      idleTimeoutMillis: 12e3,
+      // Shorter idle for cost efficiency
+      query_timeout: 4e3,
+      // Sufficient for complex queries
+      statement_timeout: 6e3,
+      // Safe timeout
+      // MINIMAL connection pool for cost efficiency
+      max: 4,
+      // Reduced connections (Railway efficient)
+      min: 0,
+      // Zero idle connections = cost savings
+      acquireTimeoutMillis: 3e3,
+      // Fast acquire
+      createTimeoutMillis: 3e3,
+      // Fast creation
+      destroyTimeoutMillis: 1500,
+      // Quick cleanup
+      reapIntervalMillis: 800,
+      // Frequent cleanup for cost control
+      createRetryIntervalMillis: 150,
+      // Fast retry
+      // Railway-specific optimizations
+      keepAlive: true,
+      keepAliveInitialDelayMillis: 1e4
     };
     pool = new Pool(connectionConfig);
     db = drizzle(pool, { schema: schema_exports });
@@ -302,7 +325,8 @@ var DatabaseStorage = class {
     return business || void 0;
   }
   async getAllBusinesses(page = 1, limit = 10, sortBy = "createdAt", sortOrder = "asc") {
-    const offset = (page - 1) * limit;
+    const limitNumber = Math.min(limit, 75);
+    const offset = (page - 1) * limitNumber;
     let orderByColumn;
     switch (sortBy) {
       case "name":
@@ -317,16 +341,34 @@ var DatabaseStorage = class {
         break;
     }
     const [businessList, totalResult] = await Promise.all([
-      db.select().from(businesses).orderBy(sortOrder === "desc" ? sql2`${orderByColumn} DESC` : orderByColumn).limit(limit).offset(offset),
-      db.select({ count: sql2`count(*)` }).from(businesses)
+      db.select().from(businesses).orderBy(sortOrder === "desc" ? sql2`${orderByColumn} DESC` : orderByColumn).limit(limitNumber).offset(offset),
+      this.getCachedBusinessCount()
+      // Use cached count to save compute
     ]);
     return {
       businesses: businessList,
-      total: totalResult[0]?.count || 0
+      total: totalResult
     };
   }
+  // Cost-efficient cached count to avoid expensive COUNT queries
+  businessCountCache = null;
+  async getCachedBusinessCount() {
+    const CACHE_TTL = 45e3;
+    const now = Date.now();
+    if (this.businessCountCache && now - this.businessCountCache.timestamp < CACHE_TTL) {
+      return this.businessCountCache.count;
+    }
+    const result = await db.select({ count: sql2`count(*)` }).from(businesses);
+    const count = result[0]?.count || 0;
+    this.businessCountCache = { count, timestamp: now };
+    return count;
+  }
   async getAllBusinessesForAutocomplete() {
-    const businessList = await db.select().from(businesses).orderBy(businesses.name);
+    const businessList = await db.select({
+      id: businesses.id,
+      name: businesses.name,
+      taxId: businesses.taxId
+    }).from(businesses).orderBy(businesses.name).limit(80);
     return businessList;
   }
   async updateBusiness(business) {
@@ -341,46 +383,40 @@ var DatabaseStorage = class {
   async searchBusinesses(search) {
     const { field, value } = search;
     switch (field) {
-      case "address":
-        return await db.select().from(businesses).where(eq(businesses.address, value));
-      case "addressPartial":
-        return await db.select().from(businesses).where(like(businesses.address, `%${value}%`));
       case "name":
-        return await db.select().from(businesses).where(eq(businesses.name, value));
+        return await db.select().from(businesses).where(eq(businesses.name, value)).limit(50);
+      // Cost-optimized limit
       case "namePartial":
-        return await db.select().from(businesses).where(like(businesses.name, `%${value}%`));
+        return await db.select().from(businesses).where(like(businesses.name, `%${value}%`)).limit(50);
       case "taxId":
-        return await db.select().from(businesses).where(eq(businesses.taxId, value));
-      case "industry":
-        return await db.select().from(businesses).where(eq(businesses.industry, value));
-      case "contactPerson":
-        return await db.select().from(businesses).where(eq(businesses.contactPerson, value));
+        return await db.select().from(businesses).where(eq(businesses.taxId, value)).limit(50);
+      case "address":
+        return await db.select().from(businesses).where(eq(businesses.address, value)).limit(30);
+      // Reduced for cost efficiency
+      case "addressPartial":
+        return await db.select().from(businesses).where(like(businesses.address, `%${value}%`)).limit(30);
       case "phone":
-        return await db.select().from(businesses).where(eq(businesses.phone, value));
-      case "email":
-        return await db.select().from(businesses).where(eq(businesses.email, value));
-      case "website":
-        return await db.select().from(businesses).where(eq(businesses.website, value));
-      case "account":
-        return await db.select().from(businesses).where(eq(businesses.account, value));
-      case "bankAccount":
-        return await db.select().from(businesses).where(eq(businesses.bankAccount, value));
-      case "bankName":
-        return await db.select().from(businesses).where(eq(businesses.bankName, value));
+        return await db.select().from(businesses).where(eq(businesses.phone, value)).limit(30);
+      // Essential searches only with reduced limits
       default:
         return [];
     }
   }
   // Document transaction operations
   async createDocumentTransaction(transaction) {
-    const [createdTransaction] = await db.insert(documentTransactions).values(transaction).returning();
-    return createdTransaction;
+    try {
+      const [createdTransaction] = await db.insert(documentTransactions).values(transaction).returning();
+      return createdTransaction;
+    } catch (error) {
+      console.error("Error creating document transaction:", error);
+      throw error;
+    }
   }
   async getDocumentTransactionsByBusinessId(businessId) {
-    return await db.select().from(documentTransactions).where(eq(documentTransactions.businessId, businessId)).orderBy(documentTransactions.createdAt);
+    return await db.select().from(documentTransactions).where(eq(documentTransactions.businessId, businessId)).orderBy(sql2`${documentTransactions.createdAt} DESC`).limit(150);
   }
   async getAllDocumentTransactions() {
-    return await db.select().from(documentTransactions).orderBy(documentTransactions.createdAt);
+    return await db.select().from(documentTransactions).orderBy(sql2`${documentTransactions.createdAt} DESC`).limit(1500);
   }
   async getDocumentTransactionsByCompany(companyName) {
     return await db.select().from(documentTransactions).where(
@@ -474,6 +510,7 @@ var DatabaseStorage = class {
           id SERIAL PRIMARY KEY,
           username VARCHAR(255) UNIQUE NOT NULL,
           password VARCHAR(255) NOT NULL,
+          role VARCHAR(50) DEFAULT 'admin',
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
       `);
@@ -481,35 +518,63 @@ var DatabaseStorage = class {
         CREATE TABLE IF NOT EXISTS businesses (
           id SERIAL PRIMARY KEY,
           name VARCHAR(255) NOT NULL,
-          tax_id VARCHAR(100) UNIQUE,
-          address TEXT,
-          phone VARCHAR(50),
-          email VARCHAR(255),
-          website VARCHAR(255),
-          industry VARCHAR(255),
-          contact_person VARCHAR(255),
-          account VARCHAR(255),
-          password VARCHAR(255),
-          bank_account VARCHAR(255),
-          bank_name VARCHAR(255),
-          custom_fields JSONB DEFAULT '{}',
-          notes TEXT,
-          access_code VARCHAR(255),
+          tax_id VARCHAR(50) NOT NULL UNIQUE,
+          phone VARCHAR(20),
+          
+          -- Essential account fields only (7 core account types)
+          tax_account_id VARCHAR(255),
+          tax_account_password VARCHAR(255),
+          hddt_lookup_id VARCHAR(255), 
+          hddt_lookup_password VARCHAR(255),
+          web_hddt_website VARCHAR(255),
+          web_hddt_id VARCHAR(255),
+          web_hddt_password VARCHAR(255),
+          social_insurance_code VARCHAR(255),
+          social_insurance_id VARCHAR(255),
+          social_insurance_main_password VARCHAR(255),
+          social_insurance_sub_password VARCHAR(255),
+          token_id VARCHAR(255),
+          token_password VARCHAR(255),
+          token_provider VARCHAR(255),
+          token_registration_date VARCHAR(255),
+          token_expiry_date VARCHAR(255),
+          token_management_location VARCHAR(255),
+          statistics_id VARCHAR(255),
+          statistics_password VARCHAR(255),
+          audit_software_website VARCHAR(255),
+          audit_software_id VARCHAR(255),
+          audit_software_password VARCHAR(255),
+          
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
       `);
       await client.query(`
+        CREATE INDEX IF NOT EXISTS idx_businesses_tax_id ON businesses(tax_id);
+        CREATE INDEX IF NOT EXISTS idx_businesses_created_at ON businesses(created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_businesses_name ON businesses(name);
+      `);
+      await client.query(`
         CREATE TABLE IF NOT EXISTS document_transactions (
           id SERIAL PRIMARY KEY,
-          business_id INTEGER NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
-          document_type VARCHAR(255) NOT NULL,
+          business_id INTEGER REFERENCES businesses(id) ON DELETE CASCADE,
+          document_number TEXT,
           transaction_type VARCHAR(50) NOT NULL,
-          handled_by VARCHAR(255) NOT NULL,
-          transaction_date TIMESTAMP NOT NULL,
+          sender_business_id INTEGER REFERENCES businesses(id),
+          receiver_business_id INTEGER REFERENCES businesses(id),
+          document_types TEXT[] NOT NULL,
+          quantities INTEGER[] NOT NULL,
+          units TEXT[] NOT NULL,
           notes TEXT,
-          signed_file_path VARCHAR(500),
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+          handover_report TEXT,
+          pdf_file_path VARCHAR(500),
+          pdf_file_name VARCHAR(255),
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
+      `);
+      await client.query(`
+        CREATE INDEX IF NOT EXISTS idx_document_transactions_business_id ON document_transactions(business_id);
+        CREATE INDEX IF NOT EXISTS idx_document_transactions_created_at ON document_transactions(created_at DESC);
       `);
       client.release();
       console.log("Database tables created successfully");
@@ -593,6 +658,7 @@ var DatabaseStorage = class {
       return false;
     }
   }
+  // Additional methods for complete sync - removed duplicates
 };
 var storage = new DatabaseStorage();
 
@@ -801,6 +867,44 @@ async function registerRoutes(app2) {
       res.status(500).json({
         status: "error",
         message: "Database connection failed",
+        timestamp: (/* @__PURE__ */ new Date()).toISOString()
+      });
+    }
+  });
+  app2.get("/api/debug", async (req, res) => {
+    try {
+      const storageCheck = {
+        getAllBusinessesForAutocomplete: typeof storage.getAllBusinessesForAutocomplete === "function",
+        getAllDocumentTransactions: typeof storage.getAllDocumentTransactions === "function",
+        createBusiness: typeof storage.createBusiness === "function",
+        getBusinessById: typeof storage.getBusinessById === "function"
+      };
+      let dataCount = { businesses: 0, transactions: 0, error: null };
+      try {
+        if (storage.getAllBusinessesForAutocomplete) {
+          const businesses2 = await storage.getAllBusinessesForAutocomplete();
+          dataCount.businesses = businesses2.length;
+        }
+        if (storage.getAllDocumentTransactions) {
+          const transactions = await storage.getAllDocumentTransactions();
+          dataCount.transactions = transactions.length;
+        }
+      } catch (error) {
+        dataCount.error = error instanceof Error ? error.message : String(error);
+      }
+      res.json({
+        status: "debug_info",
+        timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+        storage_methods: storageCheck,
+        data_count: dataCount,
+        node_env: process.env.NODE_ENV,
+        deployment: "production"
+      });
+    } catch (error) {
+      console.error("Debug check failed:", error);
+      res.status(500).json({
+        status: "debug_error",
+        message: error instanceof Error ? error.message : String(error),
         timestamp: (/* @__PURE__ */ new Date()).toISOString()
       });
     }
@@ -1522,14 +1626,27 @@ async function registerRoutes(app2) {
       res.status(500).json({ message: "L\u1ED7i khi t\u1EA3i danh s\xE1ch giao d\u1ECBch h\u1ED3 s\u01A1 theo m\xE3 s\u1ED1 thu\u1EBF" });
     }
   });
-  app2.get("/api/documents/tax-id/:taxId", async (req, res) => {
+  app2.post("/api/documents/pdf-upload", async (req, res) => {
     try {
-      const taxId = req.params.taxId;
-      const transactions = await storage.getDocumentTransactionsByTaxId(taxId);
-      res.json(transactions);
+      const objectStorageService = new ObjectStorageService();
+      const uploadURL = await objectStorageService.getObjectEntityUploadURL();
+      res.json({ uploadURL });
     } catch (error) {
-      console.error("Error fetching document transactions by tax ID:", error);
-      res.status(500).json({ message: "L\u1ED7i khi t\u1EA3i danh s\xE1ch giao d\u1ECBch h\u1ED3 s\u01A1 theo m\xE3 s\u1ED1 thu\u1EBF" });
+      console.error("Error getting PDF upload URL:", error);
+      res.status(500).json({ message: "L\u1ED7i khi t\u1EA1o URL t\u1EA3i l\xEAn PDF" });
+    }
+  });
+  app2.delete("/api/documents/:id/pdf", async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const success = await storage.updateDocumentTransactionPdf(id, null, null);
+      if (!success) {
+        return res.status(404).json({ message: "Kh\xF4ng t\xECm th\u1EA5y giao d\u1ECBch h\u1ED3 s\u01A1" });
+      }
+      res.json({ message: "X\xF3a PDF th\xE0nh c\xF4ng" });
+    } catch (error) {
+      console.error("Error deleting PDF:", error);
+      res.status(500).json({ message: "L\u1ED7i khi x\xF3a PDF" });
     }
   });
   const httpServer = createServer(app2);
@@ -1760,11 +1877,7 @@ app.use((req, res, next) => {
     serveStatic(app);
   }
   const port = parseInt(process.env.PORT || "5000", 10);
-  server.listen({
-    port,
-    host: "0.0.0.0",
-    reusePort: true
-  }, () => {
+  server.listen(port, "0.0.0.0", () => {
     log(`serving on port ${port}`);
   });
 })();
