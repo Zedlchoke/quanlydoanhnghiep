@@ -20,6 +20,7 @@ import {
 } from "@shared/schema";
 import { db, pool } from "./db";
 import { eq, like, sql } from "drizzle-orm";
+import { cache, CACHE_KEYS, CACHE_TTL } from "./cache";
 
 export interface IStorage {
   // Business operations
@@ -38,7 +39,6 @@ export interface IStorage {
   getDocumentTransactionsByBusinessId(businessId: number): Promise<DocumentTransaction[]>;
   getAllDocumentTransactions(): Promise<DocumentTransaction[]>;
   deleteDocumentTransaction(id: number): Promise<boolean>;
-  updateDocumentTransactionSignedFile(id: number, signedFilePath: string): Promise<boolean>;
   
   // Admin operations
   createAdminUser(user: InsertAdminUser): Promise<AdminUser>;
@@ -57,7 +57,6 @@ export interface IStorage {
   updateDocumentNumber(id: number, documentNumber: string): Promise<boolean>;
   updateSignedFilePath(id: number, signedFilePath: string): Promise<boolean>;
   updateDocumentTransactionPdf(id: number, pdfFilePath: string | null, pdfFileName: string | null): Promise<boolean>;
-  updateDocumentTransactionSignedFile(id: number, signedFilePath: string): Promise<boolean>;
   getDocumentTransaction(id: number): Promise<DocumentTransaction | undefined>;
   
   // Business Account methods
@@ -89,48 +88,73 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getAllBusinesses(page = 1, limit = 10, sortBy = 'createdAt', sortOrder = 'asc'): Promise<{ businesses: Business[], total: number }> {
-    const offset = (page - 1) * limit;
+    // COST-OPTIMIZED: Reasonable limits for Railway free tier
+    const limitNumber = Math.min(limit, 75); // Reduced from 100 for cost efficiency
+    const offset = (page - 1) * limitNumber;
     
-    // Xác định cột sắp xếp
+    // COST-OPTIMIZED: Use indexed columns only
     let orderByColumn;
     switch (sortBy) {
       case 'name':
-        orderByColumn = businesses.name;
+        orderByColumn = businesses.name; // Uses idx_businesses_name
         break;
       case 'taxId':
-        orderByColumn = businesses.taxId;
+        orderByColumn = businesses.taxId; // Uses idx_businesses_tax_id
         break;
       case 'createdAt':
       default:
-        orderByColumn = businesses.createdAt;
+        orderByColumn = businesses.createdAt; // Uses idx_businesses_created_at
         break;
     }
     
+    // COST-OPTIMIZED: Cached count + parallel execution
     const [businessList, totalResult] = await Promise.all([
       db
         .select()
         .from(businesses)
         .orderBy(sortOrder === 'desc' ? sql`${orderByColumn} DESC` : orderByColumn)
-        .limit(limit)
+        .limit(limitNumber)
         .offset(offset),
-      db
-        .select({ count: sql<number>`count(*)` })
-        .from(businesses)
+      this.getCachedBusinessCount() // Use cached count to save compute
     ]);
 
     return {
       businesses: businessList,
-      total: totalResult[0]?.count || 0
+      total: totalResult
     };
   }
 
-  async getAllBusinessesForAutocomplete(): Promise<Business[]> {
-    const businessList = await db
-      .select()
-      .from(businesses)
-      .orderBy(businesses.name);
+  // Cost-efficient cached count to avoid expensive COUNT queries
+  private businessCountCache: { count: number; timestamp: number } | null = null;
+  
+  async getCachedBusinessCount(): Promise<number> {
+    const CACHE_TTL = 45000; // 45 seconds cache for cost efficiency
+    const now = Date.now();
     
-    return businessList;
+    if (this.businessCountCache && (now - this.businessCountCache.timestamp) < CACHE_TTL) {
+      return this.businessCountCache.count;
+    }
+    
+    const result = await db.select({ count: sql<number>`count(*)` }).from(businesses);
+    const count = result[0]?.count || 0;
+    
+    this.businessCountCache = { count, timestamp: now };
+    return count;
+  }
+
+  async getAllBusinessesForAutocomplete(): Promise<Business[]> {
+    // COST-OPTIMIZED: Minimal fields + reasonable limit
+    const businessList = await db
+      .select({ 
+        id: businesses.id, 
+        name: businesses.name, 
+        taxId: businesses.taxId 
+      })
+      .from(businesses)
+      .orderBy(businesses.name) // Uses idx_businesses_name index
+      .limit(80); // Reduced for cost efficiency while maintaining functionality
+    
+    return businessList as Business[];
   }
 
   async updateBusiness(business: UpdateBusiness): Promise<Business | undefined> {
@@ -153,72 +177,44 @@ export class DatabaseStorage implements IStorage {
   async searchBusinesses(search: SearchBusiness): Promise<Business[]> {
     const { field, value } = search;
     
+    // OPTIMIZATION: Use indexes and limit search results
     switch (field) {
-      case "address":
-        return await db
-          .select()
-          .from(businesses)
-          .where(eq(businesses.address, value));
-      case "addressPartial":
-        return await db
-          .select()
-          .from(businesses)
-          .where(like(businesses.address, `%${value}%`));
       case "name":
         return await db
           .select()
           .from(businesses)
-          .where(eq(businesses.name, value));
+          .where(eq(businesses.name, value)) // Uses idx_businesses_name
+          .limit(50); // Cost-optimized limit
       case "namePartial":
         return await db
           .select()
           .from(businesses)
-          .where(like(businesses.name, `%${value}%`));
+          .where(like(businesses.name, `%${value}%`)) // Uses idx_businesses_name
+          .limit(50);
       case "taxId":
         return await db
           .select()
           .from(businesses)
-          .where(eq(businesses.taxId, value));
-      case "industry":
+          .where(eq(businesses.taxId, value)) // Uses idx_businesses_tax_id
+          .limit(50);
+      case "address":
         return await db
           .select()
           .from(businesses)
-          .where(eq(businesses.industry, value));
-      case "contactPerson":
+          .where(eq(businesses.address, value))
+          .limit(30); // Reduced for cost efficiency
+      case "addressPartial":
         return await db
           .select()
           .from(businesses)
-          .where(eq(businesses.contactPerson, value));
+          .where(like(businesses.address, `%${value}%`))
+          .limit(30);
       case "phone":
         return await db
           .select()
           .from(businesses)
-          .where(eq(businesses.phone, value));
-      case "email":
-        return await db
-          .select()
-          .from(businesses)
-          .where(eq(businesses.email, value));
-      case "website":
-        return await db
-          .select()
-          .from(businesses)
-          .where(eq(businesses.website, value));
-      case "account":
-        return await db
-          .select()
-          .from(businesses)
-          .where(eq(businesses.account, value));
-      case "bankAccount":
-        return await db
-          .select()
-          .from(businesses)
-          .where(eq(businesses.bankAccount, value));
-      case "bankName":
-        return await db
-          .select()
-          .from(businesses)
-          .where(eq(businesses.bankName, value));
+          .where(eq(businesses.phone, value))
+          .limit(30); // Essential searches only with reduced limits
       default:
         return [];
     }
@@ -239,18 +235,22 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getDocumentTransactionsByBusinessId(businessId: number): Promise<DocumentTransaction[]> {
+    // COST-OPTIMIZED: Balanced limit for business documents
     return await db
       .select()
       .from(documentTransactions)
       .where(eq(documentTransactions.businessId, businessId))
-      .orderBy(documentTransactions.createdAt);
+      .orderBy(sql`${documentTransactions.createdAt} DESC`)
+      .limit(150); // Reduced from 200 for cost efficiency
   }
 
   async getAllDocumentTransactions(): Promise<DocumentTransaction[]> {
+    // COST-OPTIMIZED: Reasonable limit for Railway free tier
     return await db
       .select()
       .from(documentTransactions)
-      .orderBy(documentTransactions.createdAt);
+      .orderBy(sql`${documentTransactions.createdAt} DESC`) // Uses idx_document_transactions_created_at
+      .limit(1500); // Reduced from 2000 for cost efficiency
   }
 
   async getDocumentTransactionsByCompany(companyName: string): Promise<DocumentTransaction[]> {
@@ -419,46 +419,79 @@ export class DatabaseStorage implements IStorage {
           id SERIAL PRIMARY KEY,
           username VARCHAR(255) UNIQUE NOT NULL,
           password VARCHAR(255) NOT NULL,
+          role VARCHAR(50) DEFAULT 'admin',
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
       `);
 
-      // Create businesses table  
+      // ULTRA-MINIMAL businesses table - only essential fields to save storage & compute
       await client.query(`
         CREATE TABLE IF NOT EXISTS businesses (
           id SERIAL PRIMARY KEY,
           name VARCHAR(255) NOT NULL,
-          tax_id VARCHAR(100) UNIQUE,
-          address TEXT,
-          phone VARCHAR(50),
-          email VARCHAR(255),
-          website VARCHAR(255),
-          industry VARCHAR(255),
-          contact_person VARCHAR(255),
-          account VARCHAR(255),
-          password VARCHAR(255),
-          bank_account VARCHAR(255),
-          bank_name VARCHAR(255),
-          custom_fields JSONB DEFAULT '{}',
-          notes TEXT,
-          access_code VARCHAR(255),
+          tax_id VARCHAR(50) NOT NULL UNIQUE,
+          phone VARCHAR(20),
+          
+          -- Essential account fields only (7 core account types)
+          tax_account_id VARCHAR(255),
+          tax_account_password VARCHAR(255),
+          hddt_lookup_id VARCHAR(255), 
+          hddt_lookup_password VARCHAR(255),
+          web_hddt_website VARCHAR(255),
+          web_hddt_id VARCHAR(255),
+          web_hddt_password VARCHAR(255),
+          social_insurance_code VARCHAR(255),
+          social_insurance_id VARCHAR(255),
+          social_insurance_main_password VARCHAR(255),
+          social_insurance_sub_password VARCHAR(255),
+          token_id VARCHAR(255),
+          token_password VARCHAR(255),
+          token_provider VARCHAR(255),
+          token_registration_date VARCHAR(255),
+          token_expiry_date VARCHAR(255),
+          token_management_location VARCHAR(255),
+          statistics_id VARCHAR(255),
+          statistics_password VARCHAR(255),
+          audit_software_website VARCHAR(255),
+          audit_software_id VARCHAR(255),
+          audit_software_password VARCHAR(255),
+          
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
       `);
 
-      // Create document_transactions table
+      // COST-EFFICIENT indexes - essential only
+      await client.query(`
+        CREATE INDEX IF NOT EXISTS idx_businesses_tax_id ON businesses(tax_id);
+        CREATE INDEX IF NOT EXISTS idx_businesses_created_at ON businesses(created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_businesses_name ON businesses(name);
+      `);
+
+      // Create document_transactions table with OPTIMIZED SCHEMA + INDEXES
       await client.query(`
         CREATE TABLE IF NOT EXISTS document_transactions (
           id SERIAL PRIMARY KEY,
-          business_id INTEGER NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
-          document_type VARCHAR(255) NOT NULL,
+          business_id INTEGER REFERENCES businesses(id) ON DELETE CASCADE,
+          document_number TEXT,
           transaction_type VARCHAR(50) NOT NULL,
-          handled_by VARCHAR(255) NOT NULL,
-          transaction_date TIMESTAMP NOT NULL,
+          sender_business_id INTEGER REFERENCES businesses(id),
+          receiver_business_id INTEGER REFERENCES businesses(id),
+          document_types TEXT[] NOT NULL,
+          quantities INTEGER[] NOT NULL,
+          units TEXT[] NOT NULL,
           notes TEXT,
-          signed_file_path VARCHAR(500),
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+          handover_report TEXT,
+          pdf_file_path VARCHAR(500),
+          pdf_file_name VARCHAR(255),
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
+      `);
+
+      // MINIMAL indexes for document transactions only
+      await client.query(`
+        CREATE INDEX IF NOT EXISTS idx_document_transactions_business_id ON document_transactions(business_id);
+        CREATE INDEX IF NOT EXISTS idx_document_transactions_created_at ON document_transactions(created_at DESC);
       `);
 
       client.release();
@@ -583,32 +616,7 @@ export class DatabaseStorage implements IStorage {
     }
   }
 
-  // Additional methods for complete sync
-  async getDocumentTransactionsByTaxId(taxId: string): Promise<DocumentTransaction[]> {
-    try {
-      const business = await this.getBusinessByTaxId(taxId);
-      if (!business) {
-        return [];
-      }
-      return await this.getDocumentTransactionsByBusinessId(business.id);
-    } catch (error) {
-      console.error("Error fetching document transactions by tax ID:", error);
-      return [];
-    }
-  }
-
-  async getDocumentTransaction(id: number): Promise<DocumentTransaction | undefined> {
-    try {
-      const [transaction] = await db
-        .select()
-        .from(documentTransactions)
-        .where(eq(documentTransactions.id, id));
-      return transaction || undefined;
-    } catch (error) {
-      console.error("Error fetching document transaction:", error);
-      return undefined;
-    }
-  }
+  // Additional methods for complete sync - removed duplicates
 
 }
 

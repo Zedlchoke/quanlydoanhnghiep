@@ -8,15 +8,30 @@ if (!process.env.DATABASE_URL) {
   );
 }
 
-// Enhanced connection configuration for production
+// Optimized connection configuration for Railway production
 const connectionConfig = {
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
-  connectionTimeoutMillis: 10000,
-  idleTimeoutMillis: 30000,
-  max: 10,
-  min: 1
-};
+  
+  // COST-OPTIMIZED for Railway free tier
+  connectionTimeoutMillis: 4000,    // Balanced timeout
+  idleTimeoutMillis: 12000,         // Shorter idle for cost efficiency
+  query_timeout: 4000,              // Sufficient for complex queries
+  statement_timeout: 6000,          // Safe timeout
+  
+  // MINIMAL connection pool for cost efficiency
+  max: 4,                          // Reduced connections (Railway efficient)
+  min: 0,                          // Zero idle connections = cost savings
+  acquireTimeoutMillis: 3000,      // Fast acquire
+  createTimeoutMillis: 3000,       // Fast creation
+  destroyTimeoutMillis: 1500,      // Quick cleanup
+  reapIntervalMillis: 800,         // Frequent cleanup for cost control
+  createRetryIntervalMillis: 150,  // Fast retry
+  
+  // Railway-specific optimizations
+  keepAlive: true,
+  keepAliveInitialDelayMillis: 10000,
+}
 
 export const pool = new Pool(connectionConfig);
 export const db = drizzle(pool, { schema });
